@@ -1,3 +1,5 @@
+//go:build !nospiffe
+
 package crypto
 
 import (

@@ -52,6 +52,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Regenerate the Ground Control database package
         run: task generate:groundcontrol-database
@@ -64,6 +65,35 @@ jobs:
             git status --porcelain -- internal/groundcontrol/database
             exit 1
           fi
+
+  integration-tests:
+    name: Ground Control Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.5"
+          cache: false
+
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+
+      # Service containers cannot pass -c shared_preload_libraries, which the
+      # statement budgets need, so the task starts Postgres with compose.
+      - name: Run integration tests
+        run: task test:integration
+
+      - name: Remove test Postgres
+        if: always()
+        run: task test:integration-db-down
 
   vulnerability-check:
     runs-on: ubuntu-latest
@@ -117,6 +147,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
@@ -146,6 +177,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Build the binary for the satellite
         run: task _build:satellite
@@ -166,6 +198,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Build Ground Control
         run: task _build:groundcontrol
@@ -187,9 +220,32 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test E2E satellite
         run: task e2e-test
+
+  e2e-multi-group-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.5"
+          cache: false
+
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+
+      - name: Test multi-group E2E
+        run: task e2e-multi-group
 
   e2e-byo-registry-tests:
     runs-on: ubuntu-latest
@@ -208,6 +264,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test BYO Registry E2E
         run: task e2e-byo
@@ -229,6 +286,39 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test SPIFFE Join Token E2E
         run: task e2e-spiffe
+
+  # The flows that restart processes or stop Harbor: crash recovery of both
+  # stores, GC through a Harbor outage, revocation and webhook delivery
+  # across a dispatcher restart.
+  e2e-recovery-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [e2e-crash-recovery, e2e-crash-recovery-byo, e2e-harbor-outage, e2e-lifecycle]
+    name: ${{ matrix.variant }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.5"
+          cache: false
+
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+
+      - name: Test ${{ matrix.variant }}
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: task "$VARIANT"

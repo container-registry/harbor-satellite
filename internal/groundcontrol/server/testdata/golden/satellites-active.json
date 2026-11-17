@@ -1,0 +1,22 @@
+{
+  "body": [
+    {
+      "CreatedAt": "\u003ctimestamp\u003e",
+      "HeartbeatInterval": {
+        "String": "@every 00h00m30s",
+        "Valid": true
+      },
+      "ID": "\u003cid\u003e",
+      "LastActivity": "replicating",
+      "LastSeen": {
+        "Time": "\u003ctimestamp\u003e",
+        "Valid": true
+      },
+      "LastStatusTime": "\u003ctimestamp\u003e",
+      "Name": "edge-01",
+      "UpdatedAt": "\u003ctimestamp\u003e"
+    }
+  ],
+  "request": "GET /api/satellites/active",
+  "status": 200
+}

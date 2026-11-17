@@ -1,0 +1,5 @@
+{
+  "body": "pong",
+  "request": "GET /ping",
+  "status": 200
+}

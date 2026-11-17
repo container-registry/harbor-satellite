@@ -80,10 +80,12 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 		"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
 		"image_count", "reported_at", "created_at", "artifact_ids",
+		"download_bytes_per_second", "bytes_in_window", "bytes_total",
 	}).AddRow(
 		1, 1, "", sql.NullString{}, sql.NullString{},
 		sql.NullString{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
 		sql.NullInt32{Int32: 2, Valid: true}, now, now, pq.Array([]int32{10, 11}),
+		sql.NullFloat64{}, sql.NullInt64{}, sql.NullInt64{},
 	)
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
@@ -132,10 +134,12 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 		"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
 		"image_count", "reported_at", "created_at", "artifact_ids",
+		"download_bytes_per_second", "bytes_in_window", "bytes_total",
 	}).AddRow(
 		1, 1, "", sql.NullString{}, sql.NullString{},
 		sql.NullString{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
 		sql.NullInt32{Int32: 0, Valid: true}, now, now, pq.Array([]int32(nil)),
+		sql.NullFloat64{}, sql.NullInt64{}, sql.NullInt64{},
 	)
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
@@ -193,7 +197,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
 			AddRow(int32(10), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
 			AddRow(int32(11), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now)
-		mock.ExpectQuery("SELECT .+ FROM artifacts").
+		mock.ExpectQuery("SELECT .+ FROM satellite_view v JOIN artifacts").
 			WithArgs(int32(1)).
 			WillReturnRows(artifactRows)
 
@@ -251,7 +255,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 			WillReturnRows(satRows)
 
 		emptyRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"})
-		mock.ExpectQuery("SELECT .+ FROM artifacts").
+		mock.ExpectQuery("SELECT .+ FROM satellite_view v JOIN artifacts").
 			WithArgs(int32(1)).
 			WillReturnRows(emptyRows)
 
@@ -359,7 +363,7 @@ func TestGetCachedImagesHandler_DBFailure(t *testing.T) {
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
 
-	mock.ExpectQuery("SELECT .+ FROM artifacts").
+	mock.ExpectQuery("SELECT .+ FROM satellite_view v JOIN artifacts").
 		WithArgs(int32(1)).
 		WillReturnError(fmt.Errorf("db timeout"))
 

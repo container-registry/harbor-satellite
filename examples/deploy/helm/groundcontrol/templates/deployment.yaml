@@ -42,6 +42,13 @@ spec:
                 name: {{ include "ground-control.fullname" . }}
             - secretRef:
                 name: {{ include "ground-control.fullname" . }}
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health

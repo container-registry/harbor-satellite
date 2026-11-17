@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -76,40 +77,52 @@ type AuthUser struct {
 	Role     string
 }
 
-// AuthMiddleware validates session tokens or basic auth and adds user info to context
+// AuthMiddleware validates session tokens or basic auth and adds user info to context.
+// Plan item 8.1 reads GetSessionPrincipalByToken instead, so the principal
+// carries the groups of the user's OIDC identities.
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var user AuthUser
+		var groups []string
 		var authenticated bool
 
 		// Try Bearer token first
 		if token := extractBearerToken(r); token != "" {
-			session, err := s.dbQueries.GetSessionByToken(r.Context(), token)
+			session, err := s.dbQueries.GetSessionPrincipalByToken(r.Context(), database.GetSessionPrincipalByTokenParams{Token: token, Now: time.Now()})
 			if err == nil {
 				user = AuthUser{
 					ID:       session.UserID,
 					Username: session.Username,
 					Role:     session.Role,
 				}
+				groups = session.Groups
 				authenticated = true
 			}
 		}
 
-		// Try Basic auth if Bearer didn't work
+		// Basic auth goes through the same check as /login, so its failures
+		// count toward the lockout and the per-IP failure limit.
 		if !authenticated {
 			if username, password, ok := extractBasicAuth(r); ok {
-				dbUser, err := s.dbQueries.GetUserByUsername(r.Context(), username)
-				if err == nil {
-					valid := auth.VerifyPassword(password, dbUser.PasswordHash)
-					if valid {
-						user = AuthUser{
-							ID:       dbUser.ID,
-							Username: dbUser.Username,
-							Role:     dbUser.Role,
-						}
-						authenticated = true
-					}
+				dbUser, err := s.verifyUserCredentials(r.Context(), s.clientAddr(r), username, password)
+				if err != nil {
+					s.auditEvent(r, auditlog.AuditEvent{
+						Operation:    auditlog.OpAuth,
+						ResourceType: auditlog.ResUser,
+						Outcome:      auditlog.OutcomeFailure,
+						Actor:        username,
+						ActorType:    auditlog.ActorUser,
+						Reason:       credentialFailureReason(err),
+					})
+					writeCredentialError(w, err)
+					return
 				}
+				user = AuthUser{
+					ID:       dbUser.ID,
+					Username: dbUser.Username,
+					Role:     dbUser.Role,
+				}
+				authenticated = true
 			}
 		}
 
@@ -119,6 +132,14 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
+		principal := fleet.Principal{
+			Subject: fleet.SubjectUser + user.Username,
+			Roles:   []string{fleet.SubjectRole + user.Role},
+		}
+		for _, g := range groups {
+			principal.Groups = append(principal.Groups, fleet.SubjectOIDC+g)
+		}
+		ctx = fleet.ContextWithPrincipal(ctx, principal)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -168,16 +189,15 @@ func extractBearerToken(r *http.Request) string {
 // clientIP returns the request's source IP. By default it returns the host
 // portion of RemoteAddr, ignoring X-Forwarded-For and X-Real-IP because those
 // headers can be set by any client and would make audit source_ip values
-// unreliable. When s.trustForwardedHeaders is true (i.e. GC is behind a
-// trusted reverse proxy), the first entry of X-Forwarded-For is used, then
-// X-Real-IP, then RemoteAddr.
+// unreliable. When s.trustForwardedHeaders is true (GC behind trusted reverse
+// proxies), it returns the X-Forwarded-For entry s.trustedProxyHops from the
+// right, then X-Real-IP, then RemoteAddr. Each proxy appends the address it
+// saw, so only the entries on the right were written by a proxy; everything
+// left of them came from the client and may be forged.
 func (s *Server) clientIP(r *http.Request) string {
 	if s != nil && s.trustForwardedHeaders {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if comma := strings.Index(xff, ","); comma > 0 {
-				return strings.TrimSpace(xff[:comma])
-			}
-			return strings.TrimSpace(xff)
+		if ip, ok := forwardedFor(r.Header.Values("X-Forwarded-For"), s.trustedProxyHops); ok {
+			return ip
 		}
 		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
 			return xri
@@ -187,6 +207,24 @@ func (s *Server) clientIP(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+// forwardedFor picks the entry hops from the right of the X-Forwarded-For
+// header lines, read as one comma-separated list; hops below 1 count as 1.
+// With fewer entries than hops it returns the leftmost one.
+func forwardedFor(values []string, hops int) (string, bool) {
+	var entries []string
+	for _, v := range values {
+		for e := range strings.SplitSeq(v, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				entries = append(entries, e)
+			}
+		}
+	}
+	if len(entries) == 0 {
+		return "", false
+	}
+	return entries[max(0, len(entries)-max(1, hops))], true
 }
 
 // auditEvent records a security-relevant event, filling in the request-scoped
@@ -235,7 +273,7 @@ var (
 
 // validateSPIFFEAuth validates if the satellite exists in database by name.
 func (s *Server) validateSPIFFEAuth(ctx context.Context, spiffeName string) (string, error) {
-	sat, err := s.dbQueries.GetSatelliteByName(ctx, spiffeName)
+	sat, err := s.fleet().GetSatelliteByName(ctx, spiffeName)
 	if err != nil {
 		return "", err
 	}
@@ -244,7 +282,7 @@ func (s *Server) validateSPIFFEAuth(ctx context.Context, spiffeName string) (str
 
 // validateRobotAuth validates Basic Auth credentials against the robot account DB records.
 func (s *Server) validateRobotAuth(ctx context.Context, username, password string) (string, error) {
-	robot, err := s.dbQueries.GetRobotAccByRobotName(ctx, username)
+	robot, err := s.fleet().GetRobotAccByRobotName(ctx, username)
 	if err != nil {
 		_ = crypto.VerifySecret(password, crypto.TimingMitigationHash)
 		return "", err
@@ -255,7 +293,7 @@ func (s *Server) validateRobotAuth(ctx context.Context, username, password strin
 	if robot.RobotExpiry.Valid && robot.RobotExpiry.Time.Before(time.Now()) {
 		return "", errRobotExpired
 	}
-	sat, err := s.dbQueries.GetSatellite(ctx, robot.SatelliteID)
+	sat, err := s.fleet().GetSatellite(ctx, robot.SatelliteID)
 	if err != nil {
 		return "", err
 	}

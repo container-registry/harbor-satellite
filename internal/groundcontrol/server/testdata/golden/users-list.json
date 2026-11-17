@@ -1,0 +1,12 @@
+{
+  "body": [
+    {
+      "created_at": "\u003ctimestamp\u003e",
+      "id": "\u003cid\u003e",
+      "role": "admin",
+      "username": "operator"
+    }
+  ],
+  "request": "GET /api/users",
+  "status": 200
+}

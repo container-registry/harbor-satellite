@@ -12,6 +12,7 @@ import (
 
 	proxy "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/singleflight"
 	"oras.land/oras-go/v2/errdef"
@@ -28,25 +29,20 @@ type pullHandler struct {
 	localStore   store.Store
 	remoteStore  store.Store
 	operations   singleflight.Group
+	filler       store.Filler
+	prefetcher   Prefetcher
+	recorder     telemetry.Recorder
+	journal      PullThroughJournal
 }
 
 // NewPull serves retained content from localStore and fills it from remoteStore
 // on a miss. The shared operation returns only an immutable descriptor; every
 // HTTP request opens and streams its own reader after the flight completes.
 func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store) (proxy.HandlerFunc, error) {
-	if lifecycleCtx == nil {
-		return nil, errors.New("image.NewPull: lifecycle context is required")
-	}
-	handler := &pullHandler{
-		lifecycleCtx: lifecycleCtx,
-		mode:         mode,
-		localStore:   localStore,
-		remoteStore:  remoteStore,
-	}
-	return handler.handle, nil
+	return NewPullWithOptions(lifecycleCtx, mode, localStore, remoteStore, PullOptions{})
 }
 
-func (p *pullHandler) handle(request *proxy.Request) error {
+func (p *pullHandler) handle(request *proxy.Request) (err error) {
 	request.ResponseHeader().Set("Docker-Distribution-API-Version", distributionAPIVersion)
 	if request.Operation == proxy.CheckRegistry {
 		return request.Write(http.StatusOK, nil)
@@ -56,6 +52,10 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	if err != nil {
 		return err
 	}
+	started := time.Now()
+	defer func() {
+		p.recorder.ObservePull(resourceLabel(resource), pullOutcome(err), time.Since(started))
+	}()
 	if !p.mode.Valid() {
 		return errors.New("proxy image pull mode is invalid")
 	}
@@ -65,11 +65,14 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	if p.mode.AllowsUpstreamPull() && p.remoteStore == nil {
 		return errors.New("proxy mode requires a remote store")
 	}
-	if err := request.Context().Err(); err != nil {
+	if err = request.Context().Err(); err != nil {
 		return err
 	}
 
 	metadataOnly := request.Operation == proxy.CheckManifest || request.Operation == proxy.CheckBlob
+	if p.filler != nil && p.mode.AllowsUpstreamPull() && !metadataOnly {
+		return p.handleStreaming(request, artifact, resource, identifier)
+	}
 	key := pullKey(resource, artifact.Name, identifier)
 	if metadataOnly {
 		key += "\x00head"
@@ -77,27 +80,33 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	resultChannel := p.operations.DoChan(key, func() (any, error) {
 		fillCtx, cancel := context.WithTimeout(p.lifecycleCtx, pullFillTimeout)
 		defer cancel()
-		if err := fillCtx.Err(); err != nil {
-			return nil, err
+		if ctxErr := fillCtx.Err(); ctxErr != nil {
+			return nil, ctxErr
 		}
-		descriptor, err := p.localStore.Pull(fillCtx, artifact, resource)
-		if err == nil {
+		descriptor, fillErr := p.localStore.Pull(fillCtx, artifact, resource)
+		if fillErr == nil {
 			return descriptor, nil
 		}
-		if !errors.Is(err, errdef.ErrNotFound) {
-			return nil, err
+		if !errors.Is(fillErr, errdef.ErrNotFound) {
+			return nil, fillErr
 		}
 		if !p.mode.AllowsUpstreamPull() {
-			return nil, err
+			return nil, fillErr
 		}
 		if metadataOnly {
 			return p.remoteStore.Pull(fillCtx, artifact, resource)
 		}
 
-		if err := p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
-			return nil, err
+		started := time.Now()
+		if fillErr = p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); fillErr != nil {
+			p.recorder.CountPullThroughFill("error")
+			p.journalFill(resource, artifact, identifier, ocispec.Descriptor{}, started, fillErr)
+			return nil, fillErr
 		}
-		return p.localStore.Pull(fillCtx, artifact, resource)
+		p.recorder.CountPullThroughFill("ok")
+		descriptor, fillErr = p.localStore.Pull(fillCtx, artifact, resource)
+		p.journalFill(resource, artifact, identifier, descriptor, started, fillErr)
+		return descriptor, fillErr
 	})
 
 	var operationResult singleflight.Result
@@ -168,6 +177,27 @@ func pullArtifactFor(request *proxy.Request) (
 		)
 	}
 	return store.Artifact{}, 0, "", errors.New("proxy image pull operation is invalid")
+}
+
+func resourceLabel(resource store.PullResource) string {
+	if resource == store.PullResourceBlob {
+		return "blob"
+	}
+	return "manifest"
+}
+
+func pullOutcome(err error) string {
+	var distributionErr *proxy.DistributionError
+	switch {
+	case err == nil:
+		return "ok"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "canceled"
+	case errors.As(err, &distributionErr) && (distributionErr.Code == proxy.ErrorCodeBlobUnknown || distributionErr.Code == proxy.ErrorCodeManifestUnknown):
+		return "not_found"
+	default:
+		return "error"
+	}
 }
 
 func pullKey(resource store.PullResource, repository, identifier string) string {

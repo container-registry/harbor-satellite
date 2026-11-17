@@ -42,4 +42,9 @@
 // Distribution v1.1.1 error codes. Unexpected errors receive a plain HTTP 500
 // response. Configure a proxy before serving it; shared state captured by a
 // HandlerFunc or MiddlewareFunc remains responsible for its own concurrency safety.
+//
+// The edge chain (plan item 9.3, ADR-0019) is composed with
+// middleware.Stack and WrapAll: metrics outermost, then authentication of
+// non-loopback clients, then edge admission (plan item 7.5), then the pull
+// handler.
 package proxy

@@ -2,19 +2,16 @@ package state
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
-
-const SPIFFEZeroTouchRegistrationRoute = "satellites/spiffe-ztr"
 
 type SpiffeZtrProcess struct {
 	name         string
@@ -101,40 +98,20 @@ func (s *SpiffeZtrProcess) Execute(ctx context.Context) error {
 }
 
 func (s *SpiffeZtrProcess) registerWithSPIFFE(ctx context.Context, log *zerolog.Logger) (config.StateConfig, error) {
-	gcURL := s.cm.ResolveGroundControlURL()
-	ztrURL := fmt.Sprintf("%s/%s", gcURL, SPIFFEZeroTouchRegistrationRoute)
-
 	httpClient, err := s.spiffeClient.CreateHTTPClient()
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("create SPIFFE HTTP client: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ztrURL, nil)
+	client, err := newGCClient(s.cm, httpClient, gcclient.NoCredentials{})
 	if err != nil {
-		return config.StateConfig{}, fmt.Errorf("create request: %w", err)
+		return config.StateConfig{}, err
 	}
-
-	log.Debug().Str("url", ztrURL).Msg("Sending SPIFFE-authenticated ZTR request")
-	resp, err := httpClient.Do(req)
+	log.Debug().Str("ground_control_url", s.cm.ResolveGroundControlURL()).Msg("Sending SPIFFE-authenticated ZTR request")
+	res, err := client.SPIFFEZeroTouch(ctx)
 	if err != nil {
-		return config.StateConfig{}, fmt.Errorf("send request: %w", err)
+		return config.StateConfig{}, err
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Warn().Err(err).Msg("error closing response body")
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return config.StateConfig{}, fmt.Errorf("registration failed: %s", resp.Status)
-	}
-
-	var stateConfig config.StateConfig
-	if err := json.NewDecoder(resp.Body).Decode(&stateConfig); err != nil {
-		return config.StateConfig{}, fmt.Errorf("decode response: %w", err)
-	}
-
-	return stateConfig, nil
+	return stateConfigFromZTR(res), nil
 }
 
 func (s *SpiffeZtrProcess) CanExecute(log *zerolog.Logger) (bool, string) {

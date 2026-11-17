@@ -1,0 +1,7 @@
+{
+  "body": {
+    "error": "SPIFFE authentication required"
+  },
+  "request": "GET /satellites/spiffe-ztr",
+  "status": 401
+}
