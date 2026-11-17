@@ -2,6 +2,7 @@ package image
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	proxy "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/singleflight"
 	"oras.land/oras-go/v2/errdef"
@@ -50,6 +52,9 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	request.ResponseHeader().Set("Docker-Distribution-API-Version", distributionAPIVersion)
 	if request.Operation == proxy.CheckRegistry {
 		return request.Write(http.StatusOK, nil)
+	}
+	if request.Operation == proxy.ListReferrers {
+		return p.listReferrers(request)
 	}
 
 	artifact, resource, identifier, err := pullArtifactFor(request)
@@ -131,6 +136,53 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		return errors.New("proxy image pull returned a nil content response")
 	}
 	return request.WriteContent(response)
+}
+
+// listReferrers answers the OCI 1.1 referrers API from the local store. Proxy
+// mode asks Harbor when nothing is retained locally; the client then pulls
+// each referrer by digest, which fills it like any other manifest.
+func (p *pullHandler) listReferrers(request *proxy.Request) error {
+	if !p.mode.Valid() {
+		return errors.New("proxy image pull mode is invalid")
+	}
+	if p.localStore == nil {
+		return errors.New("proxy image pull requires a local store")
+	}
+	if p.mode.AllowsUpstreamPull() && p.remoteStore == nil {
+		return errors.New("proxy mode requires a remote store")
+	}
+	artifact := store.Artifact{Name: request.Repository}
+	var artifactType string
+	if request.Query.ArtifactType != nil {
+		artifactType = *request.Query.ArtifactType
+	}
+	referrers, err := p.localStore.Referrers(request.Context(), artifact, request.Digest, artifactType)
+	if err != nil {
+		return err
+	}
+	if len(referrers) == 0 && p.mode.AllowsUpstreamPull() {
+		referrers, err = p.remoteStore.Referrers(request.Context(), artifact, request.Digest, artifactType)
+		if err != nil {
+			return err
+		}
+	}
+	if referrers == nil {
+		referrers = []ocispec.Descriptor{}
+	}
+	payload, err := json.Marshal(ocispec.Index{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ocispec.MediaTypeImageIndex,
+		Manifests: referrers,
+	})
+	if err != nil {
+		return err
+	}
+	header := request.ResponseHeader()
+	header.Set("Content-Type", ocispec.MediaTypeImageIndex)
+	if artifactType != "" {
+		header.Set("OCI-Filters-Applied", "artifactType")
+	}
+	return request.Write(http.StatusOK, payload)
 }
 
 func pullArtifactFor(request *proxy.Request) (

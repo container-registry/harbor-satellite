@@ -1,7 +1,9 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -75,7 +77,7 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 		if !known {
 			return ocispec.Descriptor{}, errdef.ErrNotFound
 		}
-		return desc, nil
+		return s.withManifestMediaType(ctx, desc)
 	case PullResourceBlob:
 		if desc, err := s.store.Resolve(ctx, artifact.Reference()); err == nil {
 			return desc, nil
@@ -97,6 +99,54 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 	default:
 		return ocispec.Descriptor{}, errdef.ErrNotFound
 	}
+}
+
+// withManifestMediaType fills in the media type of an untagged manifest. The
+// layout resolves such a digest as a plain blob, and clients such as cosign
+// reject a manifest served as application/octet-stream.
+func (s *OCIStore) withManifestMediaType(ctx context.Context, desc ocispec.Descriptor) (ocispec.Descriptor, error) {
+	if desc.MediaType != "" && desc.MediaType != "application/octet-stream" {
+		return desc, nil
+	}
+	payload, err := content.FetchAll(ctx, s.store, desc)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	var manifest struct {
+		MediaType string `json:"mediaType"`
+	}
+	if err := json.Unmarshal(payload, &manifest); err != nil {
+		return ocispec.Descriptor{}, fmt.Errorf("decode manifest %s: %w", desc.Digest, err)
+	}
+	if manifest.MediaType != "" {
+		desc.MediaType = manifest.MediaType
+	}
+	return desc, nil
+}
+
+// Referrers reads the referrers tag schema index Replicate stored for subject.
+func (s *OCIStore) Referrers(ctx context.Context, artifact Artifact, subject digest.Digest, artifactType string) ([]ocispec.Descriptor, error) {
+	if err := subject.Validate(); err != nil {
+		return nil, fmt.Errorf("referrers subject: %w", err)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	desc, err := s.store.Resolve(ctx, artifact.withTag(supplyChainTag(subject, "")).Reference())
+	if errors.Is(err, errdef.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	payload, err := content.FetchAll(ctx, s.store, desc)
+	if err != nil {
+		return nil, err
+	}
+	var index ocispec.Index
+	if err := json.Unmarshal(payload, &index); err != nil {
+		return nil, fmt.Errorf("decode referrers index of %s: %w", subject, err)
+	}
+	return filterArtifactType(index.Manifests, artifactType), nil
 }
 
 // Fetch opens one independent local stream. Holding the read lock until Close
@@ -172,6 +222,8 @@ type stagedArtifact struct {
 	dir   string
 	store *oci.Store
 	desc  ocispec.Descriptor
+	// related are signature and referrer manifests tagged with the root.
+	related []taggedDescriptor
 }
 
 func (s stagedArtifact) cleanup() error {
@@ -186,11 +238,48 @@ func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, 
 	if err != nil {
 		return stagedArtifact{}, err
 	}
-	desc, err := copyIntoStage(ctx, source, remote, target, s.store, dir, s.root, artifact)
+	dst := &stageTarget{Store: target, present: s.store, stageRoot: dir, presentRoot: s.root}
+	desc, err := copyIntoStage(ctx, source, remote, dst, artifact)
 	if err != nil {
 		return stagedArtifact{}, errors.Join(err, os.RemoveAll(dir))
 	}
-	return stagedArtifact{dir: dir, store: target, desc: desc}, nil
+	staged := stagedArtifact{dir: dir, store: target, desc: desc}
+	if artifact.Tag == "" {
+		return staged, nil
+	}
+	staged.related, err = stageSupplyChain(ctx, remote, dst, desc)
+	if err != nil {
+		return stagedArtifact{}, errors.Join(fmt.Errorf("stage signatures of %s: %w", artifact.Reference(), err), os.RemoveAll(dir))
+	}
+	return staged, nil
+}
+
+// stageSupplyChain copies the signatures and referrers of root into the stage.
+// It returns the tags publish adds next to the root: each cosign tag as the
+// source names it, and one referrers tag schema index per signed subject.
+func stageSupplyChain(ctx context.Context, remote oras.ReadOnlyTarget, dst *stageTarget, root ocispec.Descriptor) ([]taggedDescriptor, error) {
+	chain, err := discoverSupplyChain(ctx, remote, dst, root)
+	if err != nil {
+		return nil, err
+	}
+	if chain.empty() {
+		return nil, nil
+	}
+	if err := chain.copyTo(ctx, remote, dst); err != nil {
+		return nil, err
+	}
+	related := append([]taggedDescriptor(nil), chain.tagged...)
+	for _, group := range chain.referrers {
+		desc, payload, err := referrersIndex(group.referrers)
+		if err != nil {
+			return nil, err
+		}
+		if err := dst.Push(ctx, desc, bytes.NewReader(payload)); err != nil && !errors.Is(err, errdef.ErrAlreadyExists) {
+			return nil, fmt.Errorf("stage referrers index of %s: %w", group.subject, err)
+		}
+		related = append(related, taggedDescriptor{tag: supplyChainTag(group.subject, ""), desc: desc})
+	}
+	return related, nil
 }
 
 // clearStaleStages removes copy directories left by a process that exited
@@ -233,12 +322,11 @@ func (s *OCIStore) newStage() (string, *oci.Store, error) {
 	return dir, target, nil
 }
 
-func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage, present *oci.Store, stageRoot, presentRoot string, artifact Artifact) (ocispec.Descriptor, error) {
-	// Blobs already in the serving store are linked into the stage. oras
-	// then skips the network fetch. The extra link keeps the bytes alive if
-	// another group untags the last manifest and garbage-collects that path
-	// before publish.
-	dst := &stageTarget{Store: stage, present: present, stageRoot: stageRoot, presentRoot: presentRoot}
+// copyIntoStage copies the artifact graph into dst. Blobs already in the
+// serving store are linked into the stage, and oras then skips the network
+// fetch. The extra link keeps the bytes alive if another group untags the last
+// manifest and garbage-collects that path before publish.
+func copyIntoStage(ctx context.Context, source Store, remote oras.Target, dst *stageTarget, artifact Artifact) (ocispec.Descriptor, error) {
 	if artifact.Tag == "" {
 		desc, err := source.Pull(ctx, artifact, PullResourceBlob)
 		if err != nil {
@@ -371,8 +459,22 @@ func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact 
 	if err := s.promote(ctx, staged.dir, staged.store, staged.desc); err != nil {
 		return fmt.Errorf("publish %s to OCI store: %w", artifact.Reference(), err)
 	}
+	for _, related := range staged.related {
+		if err := s.promote(ctx, staged.dir, staged.store, related.desc); err != nil {
+			return fmt.Errorf("publish %s of %s to OCI store: %w", related.tag, artifact.Reference(), err)
+		}
+	}
 	if err := s.store.Tag(ctx, staged.desc, artifact.Reference()); err != nil {
 		return fmt.Errorf("tag %s in OCI store: %w", artifact.Reference(), err)
+	}
+	for _, related := range staged.related {
+		reference := artifact.withTag(related.tag).Reference()
+		if err := s.store.Tag(ctx, related.desc, reference); err != nil {
+			return fmt.Errorf("tag %s in OCI store: %w", reference, err)
+		}
+		if err := s.recordGraphProvenance(ctx, artifact.Name, related.desc); err != nil {
+			return err
+		}
 	}
 	if artifact.Tag == "" {
 		s.provenance.Store(provenanceKey(artifact.Name, staged.desc.Digest), struct{}{})
@@ -381,7 +483,8 @@ func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact 
 	if err := s.recordGraphProvenance(ctx, artifact.Name, staged.desc); err != nil {
 		return err
 	}
-	logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Str("digest", staged.desc.Digest.String()).Msg("artifact replicated to OCI store")
+	logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Str("digest", staged.desc.Digest.String()).
+		Int("signature_tags", len(staged.related)).Msg("artifact replicated to OCI store")
 	return nil
 }
 
@@ -428,8 +531,53 @@ func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Sto
 	})
 }
 
-func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
-	return s.store, nil
+func (s *OCIStore) targetFor(artifact Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
+	return &repositoryTarget{Store: s.store, owner: s, artifact: artifact}, nil
+}
+
+// repositoryTarget reads one repository of the layout the way a registry
+// serves it, so the layout can be a copy source with signatures: a bare tag
+// such as sha256-<hex>.sig resolves to the repository-qualified layout
+// reference, and referrers come from the stored referrers index.
+type repositoryTarget struct {
+	*oci.Store
+	owner    *OCIStore
+	artifact Artifact
+}
+
+// Resolve keeps a digest inside the repository too: the layout holds every
+// repository's content, and a digest reachable only from another repository
+// is not found here.
+func (t *repositoryTarget) Resolve(ctx context.Context, reference string) (ocispec.Descriptor, error) {
+	if _, err := digest.Parse(reference); err != nil {
+		return t.Store.Resolve(ctx, t.artifact.withTag(reference).Reference())
+	}
+	desc, err := t.Store.Resolve(ctx, reference)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	known, err := t.owner.repositoryGraphContains(ctx, t.artifact.path(), desc.Digest)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if !known {
+		return ocispec.Descriptor{}, fmt.Errorf("%s in %s: %w", reference, t.artifact.path(), errdef.ErrNotFound)
+	}
+	// A digest the layout resolves as a blob may be a manifest. Copy needs its
+	// media type to follow the graph; a plain blob keeps the default.
+	if typed, err := t.owner.withManifestMediaType(ctx, desc); err == nil {
+		desc = typed
+	}
+	return desc, nil
+}
+
+// Referrers implements registry.ReferrerLister.
+func (t *repositoryTarget) Referrers(ctx context.Context, desc ocispec.Descriptor, artifactType string, fn func([]ocispec.Descriptor) error) error {
+	referrers, err := t.owner.Referrers(ctx, t.artifact, desc.Digest, artifactType)
+	if err != nil || len(referrers) == 0 {
+		return err
+	}
+	return fn(referrers)
 }
 
 // Delete removes selected roots and garbage-collects unreachable blobs.
@@ -440,11 +588,13 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	changed := false
+	untagged := make(map[string][]ocispec.Descriptor)
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
 			return err
 		}
-		if _, err := s.store.Resolve(ctx, artifact.Reference()); err != nil {
+		root, err := s.store.Resolve(ctx, artifact.Reference())
+		if err != nil {
 			if errors.Is(err, errdef.ErrNotFound) {
 				continue
 			}
@@ -453,7 +603,13 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 		if err := s.store.Untag(ctx, artifact.Reference()); err != nil {
 			return err
 		}
+		untagged[artifact.path()] = append(untagged[artifact.path()], root)
 		changed = true
+	}
+	for repository, roots := range untagged {
+		if err := s.untagOrphanedSupplyChain(ctx, repository, roots); err != nil {
+			return err
+		}
 	}
 	if changed {
 		if err := s.store.GC(ctx); err != nil {
@@ -462,6 +618,104 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 		s.provenance.Clear()
 	}
 	return nil
+}
+
+// untagOrphanedSupplyChain removes the signature and referrer tags of manifests
+// that roots reach and no other tag in repository still reaches, including
+// referrers of referrers. GC then drops them.
+func (s *OCIStore) untagOrphanedSupplyChain(ctx context.Context, repository string, roots []ocispec.Descriptor) error {
+	refs, err := s.repositoryRefs(ctx, repository)
+	if err != nil {
+		return err
+	}
+	tags := make(map[string]struct{}, len(refs))
+	var kept []ocispec.Descriptor
+	for _, ref := range refs {
+		tags[ref] = struct{}{}
+		if isSupplyChainTag(strings.TrimPrefix(ref, repository+":")) {
+			continue
+		}
+		root, err := s.store.Resolve(ctx, ref)
+		if err != nil {
+			return err
+		}
+		kept = append(kept, root)
+	}
+	keep, err := s.supplyChainClosure(ctx, repository, tags, kept)
+	if err != nil {
+		return err
+	}
+	drop, err := s.supplyChainClosure(ctx, repository, tags, roots)
+	if err != nil {
+		return err
+	}
+	for manifest := range drop {
+		if _, ok := keep[manifest]; ok {
+			continue
+		}
+		for _, suffix := range append(cosignTagSuffixes(), "") {
+			ref := repository + ":" + supplyChainTag(manifest, suffix)
+			if _, ok := tags[ref]; !ok {
+				continue
+			}
+			if err := s.store.Untag(ctx, ref); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// supplyChainClosure returns the manifests reachable from roots through
+// successors and through the signature and referrer tags of each manifest.
+func (s *OCIStore) supplyChainClosure(ctx context.Context, repository string, tags map[string]struct{}, roots []ocispec.Descriptor) (map[digest.Digest]struct{}, error) {
+	manifests := make(map[digest.Digest]struct{})
+	seen := make(map[digest.Digest]struct{})
+	queue := append([]ocispec.Descriptor(nil), roots...)
+	for len(queue) > 0 {
+		desc := queue[0]
+		queue = queue[1:]
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+		seen[desc.Digest] = struct{}{}
+		successors, err := content.Successors(ctx, s.store, desc)
+		if err != nil {
+			return nil, err
+		}
+		queue = append(queue, successors...)
+		if !isManifestMediaType(desc.MediaType) {
+			continue
+		}
+		manifests[desc.Digest] = struct{}{}
+		for _, suffix := range append(cosignTagSuffixes(), "") {
+			ref := repository + ":" + supplyChainTag(desc.Digest, suffix)
+			if _, ok := tags[ref]; !ok {
+				continue
+			}
+			related, err := s.store.Resolve(ctx, ref)
+			if err != nil {
+				return nil, err
+			}
+			queue = append(queue, related)
+		}
+	}
+	return manifests, nil
+}
+
+// repositoryRefs lists the layout references that belong to repository.
+func (s *OCIStore) repositoryRefs(ctx context.Context, repository string) ([]string, error) {
+	base := strings.Trim(repository, "/")
+	var refs []string
+	err := s.store.Tags(ctx, "", func(tags []string) error {
+		for _, tag := range tags {
+			if strings.HasPrefix(tag, base+":") || strings.HasPrefix(tag, base+"@") {
+				refs = append(refs, tag)
+			}
+		}
+		return nil
+	})
+	return refs, err
 }
 
 func (s *OCIStore) recordGraphProvenance(ctx context.Context, repository string, root ocispec.Descriptor) error {
@@ -475,16 +729,7 @@ func (s *OCIStore) repositoryGraphContains(ctx context.Context, repository strin
 	if _, known := s.provenance.Load(provenanceKey(repository, wanted)); known {
 		return true, nil
 	}
-	var refs []string
-	err := s.store.Tags(ctx, "", func(tags []string) error {
-		for _, tag := range tags {
-			base := strings.Trim(repository, "/")
-			if strings.HasPrefix(tag, base+":") || strings.HasPrefix(tag, base+"@") {
-				refs = append(refs, tag)
-			}
-		}
-		return nil
-	})
+	refs, err := s.repositoryRefs(ctx, repository)
 	if err != nil {
 		return false, err
 	}

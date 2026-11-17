@@ -159,7 +159,9 @@ Configs: Named satellite app configs (intervals, metrics, BYO registry, registry
 
 State Replication: The satellite fetches its root state artifact (`satellite/satellite-state/<name>/state`) directly from Harbor with its robot credentials, then fetches each group state and replicates changes into the local store. GC is not on the replication data path.
 
-OCI Proxy: Unless `--fallback-only`, cmd/satellite always serves a pull-only OCI Distribution endpoint on `127.0.0.1:<proxy-port>` (default 8585, loopback hard-coded) backed by the same local store. `proxy` mode (default) fills a local miss from Harbor (GET replicates into the local store, HEAD only reads metadata); `replica` mode serves only replicated content. Push, delete, tag list, referrers and catalog return UNSUPPORTED. CEL policy and a `cache` mode from ADR-0009 are not implemented.
+Signatures: Replicate also copies the cosign tag-scheme manifests (`sha256-<hex>.sig`, `.att`, `.sbom`) and OCI 1.1 referrers (recursively, bounded) of the listed root and every manifest it links to, so index children signed with `cosign sign --recursive` keep their signatures. Nothing is tagged when the root fails the group-list digest check. The OCI store keeps referrers under the referrers tag schema index (`sha256-<hex>`), which holds them through GC and answers the proxy's referrers API; Delete untags them, referrers of referrers included, with the last tag that reaches their image. A signature lookup that fails (for example a proxy-mode peer whose Harbor is down) is logged and skipped so the image still copies. A BYO registry gets referrers pushed with their subject (ORAS maintains the tag schema index when the registry has no referrers API). Logic in store/supplychain.go. Signatures added in Harbor after an unchanged artifact was replicated are not fetched again by state replication.
+
+OCI Proxy: Unless `--fallback-only`, cmd/satellite always serves a pull-only OCI Distribution endpoint on `127.0.0.1:<proxy-port>` (default 8585, loopback hard-coded) backed by the same local store. `proxy` mode (default) fills a local miss from Harbor (GET replicates into the local store, HEAD only reads metadata); `replica` mode serves only replicated content. The referrers API is served from the local store (proxy mode asks Harbor when nothing is retained). Push, delete, tag list and catalog return UNSUPPORTED. CEL policy and a `cache` mode from ADR-0009 are not implemented.
 
 Registration (ZTR, Zero Touch Registration): Two mutually exclusive paths:
 - Token ZTR: Satellite POSTs `{"token": ...}` to `/satellites/ztr` and receives Harbor robot credentials and its state URL. Tokens expire after 24h and are deleted after a successful ZTR. Managed in state/registration_process.go.
@@ -344,6 +346,7 @@ State replication in internal/satellite/state/ and internal/satellite/store/:
 - store/store.go: Backend-neutral `Store` contract shared with the OCI proxy
 - store/oci.go: Replicating OCI graphs into the local image layout (ORAS)
 - store/registry.go: Remote registry store (ORAS) for Harbor and BYO registries
+- store/supplychain.go: Discovering and copying cosign signatures and OCI referrers with each root
 - proxy/process/image/pull.go: Proxy pull path; proxy-mode misses replicate through the same `Store.Replicate`
 - direct_delivery.go: k3s/RKE2 tarball delivery
 - registration_process.go, spiffe_registration.go: Token and SPIFFE ZTR

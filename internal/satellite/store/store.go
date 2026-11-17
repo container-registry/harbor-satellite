@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -21,8 +22,14 @@ type Store interface {
 	// and conditional headers upstream; OCI stores return a seekable local body.
 	// The caller owns and must close the response body.
 	Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor, resource PullResource, headers http.Header) (*http.Response, error)
+	// Replicate copies artifacts from source together with their cosign
+	// signatures, attestations, SBOMs and OCI 1.1 referrers.
 	Replicate(ctx context.Context, source Store, artifacts []Artifact) error
 	Delete(ctx context.Context, artifacts []Artifact) error
+	// Referrers lists the manifests in the artifact's repository whose
+	// subject is the given digest, filtered by artifactType when it is set.
+	// A subject without referrers yields an empty list and no error.
+	Referrers(ctx context.Context, artifact Artifact, subject digest.Digest, artifactType string) ([]ocispec.Descriptor, error)
 }
 
 var (
@@ -70,6 +77,11 @@ type Artifact struct {
 // when available and otherwise uses Digest.
 func (a Artifact) Reference() string {
 	return artifactReference(a.Repository, a.Name, a.destinationIdentifier())
+}
+
+// withTag returns the artifact in the same repository under another tag.
+func (a Artifact) withTag(tag string) Artifact {
+	return Artifact{Name: a.Name, Repository: a.Repository, Tag: tag}
 }
 
 func (a Artifact) sourceIdentifier() string {
@@ -149,11 +161,20 @@ func (o RegistryOptions) reference(artifact Artifact, identifier string) string 
 		artifactReference(o.repositoryPath(artifact), "", identifier)
 }
 
-func artifactReference(repository, name, identifier string) string {
-	path := strings.Trim(strings.Join([]string{
+// path returns the repository-qualified local path without a tag or digest.
+func (a Artifact) path() string {
+	return artifactPath(a.Repository, a.Name)
+}
+
+func artifactPath(repository, name string) string {
+	return strings.Trim(strings.Join([]string{
 		strings.Trim(repository, "/"),
 		strings.Trim(name, "/"),
 	}, "/"), "/")
+}
+
+func artifactReference(repository, name, identifier string) string {
+	path := artifactPath(repository, name)
 	separator := ":"
 	if strings.Contains(identifier, ":") {
 		separator = "@"
