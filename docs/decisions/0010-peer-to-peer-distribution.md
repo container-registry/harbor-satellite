@@ -6,6 +6,19 @@ informed: [Harbor Satellite Developers]
 ---
 # Copy OCI artifacts between trusted Satellites on an isolated network
 
+## Implementation Status
+
+| Part | Status |
+|---|---|
+| ADR | proposed |
+| `app_config.peer_distribution` block, validation and defaults (#674) | implemented |
+| Peer roster `peers.EligiblePeers` with the group filter (#676) | implemented |
+| Peer-first replication, first complete graph wins (#684, #697), staging outside the serving lock (#694) | implemented in `store.PeerFillingStore` |
+| Degraded replication from the last known state while Harbor is unreachable (#687, #701) | implemented |
+| Ground Control filling `gc_peers` | not implemented; both peer lists come from the config document |
+| Peers serving from the satellite proxy (the Listen part of the Decision Outcome) | not implemented: default-mode satellites cannot serve peers in this release. The proxy listens on loopback only until non-loopback client authentication exists (gate G7, [ADR-0019](0019-ground-control-hosting-and-extension-points.md)), so a peer URL must be a reachable registry endpoint such as a BYO registry |
+| Content-aware policy on a peer graph | not implemented |
+
 ## Context
 
 Satellite retains desired-state content in an ORAS OCI image layout
@@ -116,7 +129,9 @@ Satellite will add opt-in peer distribution **on top of replica mode**:
   accept push, delete, pull-through, or CRI miss-fill. BYO deployments may
   list an existing registry as a peer URL; default-mode sites use replica
   mode. Implementing replica/proxy itself is the proxy-integration work, not
-  this decision.
+  this decision. Not implemented yet: the replica proxy binds loopback only
+  until gate G7, so default-mode satellites cannot be peers (see
+  Implementation Status).
 * A **source resolver** in front of `store.Store`. It **builds a unique peer
   list** from operator static peers and, later, an optional Ground Control
   list (`gc_peers`, same schema, empty until those APIs exist). The same

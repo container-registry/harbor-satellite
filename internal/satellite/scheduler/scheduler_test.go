@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -223,5 +224,93 @@ func TestMultipleSchedulers_GracefulShutdown(t *testing.T) {
 	case <-done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for all schedulers to stop")
+	}
+}
+
+func TestNonPositiveIntervalIsAnErrorNotAPanic(t *testing.T) {
+	for _, expr := range []string{"@every 0s", "@every -5s", "@every 0h00m00s"} {
+		_, err := NewSchedulerWithInterval(expr, &mockProcess{name: "p"}, nopLogger())
+		require.ErrorContains(t, err, "must be positive", expr)
+	}
+
+	s, err := NewSchedulerWithInterval("@every 1h", &mockProcess{name: "p"}, nopLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, s.Stop(context.Background())) })
+	require.NotPanics(t, func() {
+		require.ErrorContains(t, s.ResetIntervalFromExpr("@every 0s"), "must be positive")
+	})
+}
+
+// A process marks itself running only once its goroutine runs Execute, so
+// the scheduler must not rely on IsRunning alone: two triggers in a row
+// would otherwise start two runs of one process at the same time.
+func TestLaunchProcess_NeverRunsTheProcessTwiceAtOnce(t *testing.T) {
+	// One P keeps the first run's goroutine from starting before the
+	// second launch, the window a busy machine opens by chance.
+	prev := runtime.GOMAXPROCS(1)
+	t.Cleanup(func() { runtime.GOMAXPROCS(prev) })
+	release := make(chan struct{})
+	var active, peak atomic.Int32
+	proc := &mockProcess{name: "replication", execFn: func(context.Context) error {
+		n := active.Add(1)
+		for p := peak.Load(); n > p && !peak.CompareAndSwap(p, n); p = peak.Load() {
+		}
+		<-release
+		active.Add(-1)
+		return nil
+	}}
+	s, err := NewScheduler(proc, nopLogger())
+	require.NoError(t, err)
+
+	s.launchProcess(context.Background())
+	s.launchProcess(context.Background())
+	require.Eventually(t, func() bool { return proc.execCount.Load() >= 1 }, time.Second, time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	s.wg.Wait()
+
+	require.EqualValues(t, 1, peak.Load(), "runs at once")
+	require.EqualValues(t, 1, proc.execCount.Load())
+}
+
+func TestParseEveryExpr(t *testing.T) {
+	tests := []struct {
+		name    string
+		expr    string
+		wantDur time.Duration
+		wantErr bool
+	}{
+		{
+			name:    "valid 30s",
+			expr:    "@every 30s",
+			wantDur: 30 * time.Second,
+		},
+		{
+			name:    "valid complex",
+			expr:    "@every 00h01m30s",
+			wantDur: 90 * time.Second,
+		},
+		{
+			name:    "empty",
+			expr:    "",
+			wantErr: true,
+		},
+		{
+			name:    "missing prefix",
+			expr:    "30s",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, err := parseEveryExpr(tt.expr)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantDur, d)
+		})
 	}
 }

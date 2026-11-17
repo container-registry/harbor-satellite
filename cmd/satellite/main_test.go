@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/rs/zerolog"
@@ -152,7 +154,7 @@ func TestProxyStoresPrioritizesBYORegistry(t *testing.T) {
 			LocalRegistryCredentials: config.RegistryCredentials{URL: "http://byor.example.com"},
 		},
 	})
-	local, remote, err := proxyStores(cm, t.TempDir())
+	local, remote, _, err := proxyStores(cm, t.TempDir(), store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
 	require.NoError(t, err)
 	require.IsType(t, &store.RegistryStore{}, local)
 	require.IsType(t, &store.RegistryStore{}, remote)
@@ -175,8 +177,9 @@ func TestProxyStoresUseCredentialsRegisteredAfterStartup(t *testing.T) {
 		HarborRegistryURL: upstream.URL,
 		UseUnsecure:       true,
 	}})
-	local, remote, err := proxyStores(cm, t.TempDir())
+	local, remote, recovered, err := proxyStores(cm, t.TempDir(), store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
 	require.NoError(t, err)
+	require.False(t, recovered)
 	require.IsType(t, &store.OCIStore{}, local)
 	artifact := store.Artifact{Name: "team/app", Tag: "missing"}
 	_, err = remote.Pull(context.Background(), artifact, store.PullResourceManifest)
@@ -186,6 +189,18 @@ func TestProxyStoresUseCredentialsRegisteredAfterStartup(t *testing.T) {
 	_, err = remote.Pull(context.Background(), artifact, store.PullResourceManifest)
 	require.ErrorIs(t, err, errdef.ErrNotFound)
 	require.Equal(t, upstream.URL, cm.GetSourceRegistryURL())
+}
+
+func TestProxyStoresRecoversTornIndex(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "oci-layout"), []byte(`{"imageLayoutVersion":"1.0.0"}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.json"), []byte(`{"schemaVersion":2,"manifests":[{"dig`), 0o600))
+	cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{HarborRegistryURL: "http://harbor.example.com", UseUnsecure: true}})
+
+	local, _, recovered, err := proxyStores(cm, root, store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
+	require.NoError(t, err)
+	require.True(t, recovered, "an unreadable index must be moved aside, not stop the satellite")
+	require.IsType(t, &store.OCIStore{}, local)
 }
 
 func TestGracefulShutdownDrainsActiveProxyResponse(t *testing.T) {
@@ -356,4 +371,56 @@ func TestMirrorFlags(t *testing.T) {
 		var m mirrorFlags
 		require.Equal(t, "[]", m.String())
 	})
+}
+
+func TestStreamingPullOptions(t *testing.T) {
+	cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{HarborRegistryURL: "http://harbor.example.com", UseUnsecure: true}})
+	local, remote, _, err := proxyStores(cm, t.TempDir(), store.OCIStoreOptions{AtomicIndex: true})
+	require.NoError(t, err)
+
+	off, closeOff, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeProxy}, local, remote)
+	require.NoError(t, err)
+	closeOff()
+	require.False(t, off.Streaming)
+
+	replica, closeReplica, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeReplica, ProxyStreaming: true, ProxyPrefetchWorkers: 2}, local, remote)
+	require.NoError(t, err)
+	closeReplica()
+	require.False(t, replica.Streaming, "replica mode never fills from upstream")
+
+	on, closeOn, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyStreaming: true, ProxyPrefetchWorkers: 2}, local, remote)
+	require.NoError(t, err)
+	t.Cleanup(closeOn)
+	require.True(t, on.Streaming)
+	require.NotNil(t, on.Prefetcher)
+
+	byo, closeBYO, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyStreaming: true, ProxyPrefetchWorkers: 2}, remote, remote)
+	require.NoError(t, err)
+	closeBYO()
+	require.False(t, byo.Streaming, "a registry as local store cannot stream-fill")
+}
+
+func TestServeTelemetryAnswersHealthz(t *testing.T) {
+	server, err := telemetry.NewServer(telemetry.ServerOptions{})
+	require.NoError(t, err)
+	require.NoError(t, server.AddCheck("store", func(context.Context) error { return nil }))
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := probe.Addr().String()
+	require.NoError(t, probe.Close())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	wg, wgCtx := errgroup.WithContext(ctx)
+	require.NoError(t, serveTelemetry(wgCtx, wg, server, addr))
+	require.Error(t, serveTelemetry(wgCtx, wg, server, addr), "a taken telemetry port must fail startup")
+	require.NoError(t, serveTelemetry(wgCtx, wg, server, ""), "an empty address disables telemetry")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/healthz", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	cancel()
+	require.NoError(t, wg.Wait())
 }

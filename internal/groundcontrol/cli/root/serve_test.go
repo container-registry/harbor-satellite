@@ -23,7 +23,9 @@ import (
 
 func TestServeInitialization(t *testing.T) {
 	t.Parallel()
-	for _, failAt := range []string{"environment", "health", "migrations", "server"} {
+	// A failing Harbor check does not stop serve (plan item 2.6,
+	// TestServe_StartsWithHarborUnreachable); it still runs in this order.
+	for _, failAt := range []string{"environment", "migrations", "server"} {
 		t.Run(failAt, func(t *testing.T) {
 			t.Parallel()
 			failure := errors.New("startup failed")

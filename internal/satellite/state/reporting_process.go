@@ -1,25 +1,24 @@
 package state
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
+	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
-
-const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
 	name           string
@@ -30,10 +29,10 @@ type StatusReportingProcess struct {
 	pendingCRI     []runtime.CRIConfigResult
 	eventScheduler *events.EventScheduler
 	criReported    bool
-}
-
-type StatusReportResponse struct {
-	Events []string `json:"events"`
+	runSummary     RunSummarySource
+	upload         journalUploader
+	inventory      inventoryState
+	recorder       telemetry.Recorder
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.EventScheduler) *StatusReportingProcess {
@@ -42,6 +41,7 @@ func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.
 		mu:             &sync.Mutex{},
 		cm:             cm,
 		eventScheduler: eventScheduler,
+		recorder:       telemetry.Nop{},
 	}
 
 	if cm.IsSPIFFEEnabled() {
@@ -57,6 +57,17 @@ func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.
 	}
 
 	return p
+}
+
+// SetRecorder makes every heartbeat and journal answer show on /metrics,
+// so the satellite's own view of its heartbeats can be checked.
+func (s *StatusReportingProcess) SetRecorder(rec telemetry.Recorder) {
+	if rec == nil {
+		rec = telemetry.Nop{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recorder = rec
 }
 
 // SetPendingCRIResults stores CRI config results to be sent in the first heartbeat.
@@ -85,12 +96,6 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 
 	heartbeatExpr := s.cm.GetHeartbeatInterval()
-	heartbeatDuration, err := parseEveryExpr(heartbeatExpr)
-	if err != nil {
-		log.Warn().Err(err).Msgf("Failed to parse heartbeat interval %q, using 30s", heartbeatExpr)
-		heartbeatDuration = 30 * time.Second
-	}
-
 	metricsCfg := s.cm.GetMetricsConfig()
 
 	req := &StatusReportParams{
@@ -113,18 +118,82 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		registryURL = utils.FormatRegistryURL(s.cm.GetLocalRegistryURL())
 	}
 	insecure := s.cm.UseUnsecure()
-	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
-
-	log.Info().Msg("Sending Status Report")
-	groundControlURL := s.cm.ResolveGroundControlURL()
-	log.Info().Msgf("GC URL: %s", groundControlURL)
-	resp, err := s.sendStatusReport(ctx, groundControlURL, req)
+	collectStatusReportParams(ctx, req, metricsCfg, registryURL, insecure)
+	s.mu.Lock()
+	runSummary := s.runSummary
+	s.mu.Unlock()
+	if runSummary != nil {
+		applyRunSummary(req, runSummary.LastRun())
+	}
+	report := toStatusReport(req)
+	report.CredentialsGeneration = s.cm.GetStateConfig().CredentialsGeneration
+	bare := s.upload.bare()
+	if bare {
+		req.CachedImages = nil
+		report.CachedImages = nil
+	}
+	s.mu.Lock()
+	digest := s.inventory.prepare(&report, req.CachedImages, req.CachedImages != nil)
+	s.mu.Unlock()
+	uploadBatch := s.cm.GetJournalConfig().UploadBatch
+	batch, err := s.upload.next(uploadBatch)
 	if err != nil {
+		log.Warn().Err(err).Msg("Failed to read the journal, reporting without it")
+	} else if batch != nil {
+		report.Journal = *batch
+	}
+
+	log.Debug().Str("ground_control_url", s.cm.ResolveGroundControlURL()).Msg("Sending status report")
+	s.mu.Lock()
+	recorder := s.recorder
+	s.mu.Unlock()
+	if recorder == nil {
+		recorder = telemetry.Nop{}
+	}
+	resp, err := s.sendStatusReport(ctx, report)
+	if err != nil {
+		code := heartbeatCode(err)
+		recorder.CountHeartbeat(code)
+		if code == strconv.Itoa(http.StatusRequestEntityTooLarge) {
+			reaction := s.upload.tooLarge(batch)
+			recorder.CountHeartbeatTooLarge(reaction)
+			ev := log.Error().Err(err).Str("reaction", reaction).Bool("bare", bare)
+			if batch != nil {
+				ev = ev.Int("journal_records", len(batch.Records))
+			}
+			ev.Msg("Ground Control refused the heartbeat as too large (SYNC_MAX_BODY_BYTES)")
+			return err
+		}
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
 	}
-
-	log.Info().Msgf("Received report: %v", *resp)
+	recorder.CountHeartbeat(strconv.Itoa(http.StatusOK))
+	s.upload.delivered(batch, uploadBatch)
+	s.mu.Lock()
+	s.inventory.answered(report, digest, resp.InventoryRequested)
+	s.mu.Unlock()
+	if resp.Credentials != nil {
+		if err := ApplyRotatedCredentials(s.cm, *resp.Credentials); err != nil {
+			log.Error().Err(err).Int64("generation", resp.Credentials.Generation).Msg("Failed to apply rotated robot credentials")
+		} else {
+			log.Info().Int64("generation", resp.Credentials.Generation).Msg("Switched to the rotated robot credentials")
+		}
+	}
+	if resp.Session != nil {
+		s.cm.With(config.SetGCSession(config.GCSession{Token: resp.Session.Token, ExpiresAt: resp.Session.ExpiresAt}))
+		if err := s.cm.WriteConfig(); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist the renewed Ground Control session")
+		}
+	}
+	if batch != nil {
+		outcome, err := s.upload.answer(*batch, resp.Journal)
+		if outcome != "" {
+			recorder.ObserveJournalAck(outcome, resp.Journal.AckedSeq)
+		}
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to apply the journal answer")
+		}
+	}
 
 	// Sending response events to eventscheduler
 	for _, v := range resp.Events {
@@ -142,6 +211,24 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	log.Info().Str("satellite", satelliteName).Msg("Status report sent successfully")
 	return nil
+}
+
+// heartbeatCode is the HTTP status Ground Control refused the heartbeat
+// with, or telemetry.HeartbeatTransportError when it never answered.
+func heartbeatCode(err error) string {
+	var statusErr *gcclient.StatusError
+	switch {
+	case errors.As(err, &statusErr):
+		return strconv.Itoa(statusErr.StatusCode)
+	case errors.Is(err, gcclient.ErrUnauthorized):
+		return strconv.Itoa(http.StatusUnauthorized)
+	case errors.Is(err, gcclient.ErrForbidden):
+		return strconv.Itoa(http.StatusForbidden)
+	case errors.Is(err, gcclient.ErrRateLimited):
+		return strconv.Itoa(http.StatusTooManyRequests)
+	default:
+		return telemetry.HeartbeatTransportError
+	}
 }
 
 // formatCRIActivity formats CRI config results into a structured string for the Activity field.
@@ -183,79 +270,20 @@ func (s *StatusReportingProcess) newReportClient(ctx context.Context) (*http.Cli
 	return client, nil
 }
 
-// checkStatusReportRedirect caps status-report redirects, blocks cross-scheme
-// hops, and re-attaches the request body Go otherwise clears on redirect.
-func checkStatusReportRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) >= 10 {
-		return errors.New("stopped after 10 redirects")
-	}
-	if req.URL.Scheme != via[0].URL.Scheme {
-		return fmt.Errorf("refusing cross-scheme redirect from %s to %s", via[0].URL.Scheme, req.URL.Scheme)
-	}
-	if via[0].GetBody != nil {
-		body, err := via[0].GetBody()
-		if err != nil {
-			return err
-		}
-		req.Body = body
-	}
-	req.Method = via[0].Method
-	req.ContentLength = via[0].ContentLength
-	return nil
-}
-
-func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) (*StatusReportResponse, error) {
-	body, err := json.Marshal(req)
+func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, report gcclient.StatusReport) (gcclient.SyncResult, error) {
+	httpClient, err := s.newReportClient(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("marshal status report: %w", err)
+		return gcclient.SyncResult{}, err
 	}
-
-	syncURL := fmt.Sprintf("%s/%s", strings.TrimRight(groundControlURL, "/"), StatusReportRoute)
-
-	client, err := s.newReportClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, syncURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
+	var creds gcclient.Credentials = gcclient.NoCredentials{}
 	if s.spiffeClient == nil {
-		if !s.cm.UseUnsecure() && !strings.HasPrefix(syncURL, "https://") {
-			return nil, fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", syncURL)
-		}
-		username := s.cm.GetSourceRegistryUsername()
-		password := s.cm.GetSourceRegistryPassword()
-		if username != "" && password != "" {
-			httpReq.SetBasicAuth(username, password)
-		}
+		creds = gcCredentials(s.cm)
 	}
-
-	client.CheckRedirect = checkStatusReportRedirect
-
-	resp, err := client.Do(httpReq)
+	client, err := newGCClient(s.cm, httpClient, creds)
 	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
+		return gcclient.SyncResult{}, err
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status report failed: %s", resp.Status)
-	}
-
-	var data StatusReportResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("error reading body: %w", err)
-	}
-
-	return &data, nil
+	return client.Sync(ctx, report)
 }
 
 func (s *StatusReportingProcess) Name() string {

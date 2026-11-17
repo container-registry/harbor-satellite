@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 404,
+    "message": "Group not found"
+  },
+  "request": "GET /api/groups/missing",
+  "status": 404
+}

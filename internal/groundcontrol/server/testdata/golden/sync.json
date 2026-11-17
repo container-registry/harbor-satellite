@@ -1,0 +1,7 @@
+{
+  "body": {
+    "events": []
+  },
+  "request": "POST /satellites/sync",
+  "status": 200
+}

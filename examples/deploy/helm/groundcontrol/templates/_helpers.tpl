@@ -67,6 +67,16 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/*
 Database host: internal service name or external host.
 */}}
+{{- define "ground-control.databaseSSLMode" -}}
+{{- if .Values.database.sslMode }}
+{{- .Values.database.sslMode }}
+{{- else if .Values.database.internal.enabled }}
+{{- "disable" }}
+{{- else }}
+{{- "require" }}
+{{- end }}
+{{- end }}
+
 {{- define "ground-control.databaseHost" -}}
 {{- if .Values.database.internal.enabled }}
 {{- include "ground-control.postgresql.fullname" . }}

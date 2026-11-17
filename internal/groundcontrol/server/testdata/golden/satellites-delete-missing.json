@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 404,
+    "message": "Error: Satellite Not Found"
+  },
+  "request": "DELETE /api/satellites/edge-01",
+  "status": 404
+}

@@ -1,0 +1,35 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/EdgeJournalGap.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.EdgeJournalGap event (EdgeJournalGap); v1 changes are additive only",
+  "properties": {
+    "cause": {
+      "type": "string"
+    },
+    "dropped": {
+      "type": "integer"
+    },
+    "epoch": {
+      "type": "integer"
+    },
+    "from": {
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "through": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "epoch",
+    "from",
+    "through",
+    "cause"
+  ],
+  "title": "EdgeJournalGap",
+  "type": "object"
+}

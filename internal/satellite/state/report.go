@@ -2,12 +2,12 @@ package state
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -28,13 +28,25 @@ type StatusReportParams struct {
 	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
 	ImageCount          int           `json:"image_count"`
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
+	// AppliedStates and LastReplicationError come from the last replication
+	// run (plan item 6.6).
+	AppliedStates        []AppliedState `json:"applied_states,omitempty"`
+	LastReplicationError string         `json:"last_replication_error,omitempty"`
 }
 
-func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Duration, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {
+func applyRunSummary(req *StatusReportParams, run RunSummary) {
+	req.LatestStateDigest = run.StateDigest
+	req.LatestConfigDigest = run.ConfigDigest
+	req.LastSyncDurationMs = run.Duration.Milliseconds()
+	req.LastReplicationError = edgejournal.Truncate(run.LastReplicationError)
+	req.AppliedStates = append([]AppliedState(nil), run.Applied...)
+}
+
+func collectStatusReportParams(ctx context.Context, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {
 	log := logger.FromContext(ctx)
 
 	if cfg.CollectCPU {
-		req.CPUPercent = getAvgCPUUsage(ctx, 500*time.Millisecond, heartbeatInterval)
+		req.CPUPercent = getAvgCPUUsage(ctx)
 	}
 	if cfg.CollectMemory {
 		req.MemoryUsedBytes = getMemoryUsedBytes(ctx)
@@ -54,34 +66,14 @@ func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Durat
 	}
 }
 
-func getAvgCPUUsage(ctx context.Context, sampleInterval, totalDuration time.Duration) float64 {
-	if totalDuration <= 0 || sampleInterval <= 0 {
-		return 0
-	}
-	samples := int(totalDuration / sampleInterval)
-	if samples < 1 {
-		samples = 1
-	}
-
-	var total float64
-	var count int
-	for range samples {
-		if ctx.Err() != nil {
-			break
-		}
-		percents, err := cpu.PercentWithContext(ctx, sampleInterval, false)
-		if err != nil || len(percents) == 0 {
-			continue
-		}
-		total += percents[0]
-		count++
-	}
-
-	if count == 0 {
+// getAvgCPUUsage returns the average CPU usage since the previous call, without blocking.
+func getAvgCPUUsage(ctx context.Context) float64 {
+	percents, err := cpu.PercentWithContext(ctx, 0, false)
+	if err != nil || len(percents) == 0 {
 		return 0
 	}
 
-	return total / float64(count)
+	return percents[0]
 }
 
 func getMemoryUsedBytes(ctx context.Context) uint64 {
@@ -119,16 +111,4 @@ func extractSatelliteNameFromURL(stateURL string) (string, error) {
 	}
 
 	return "", fmt.Errorf("could not extract satellite name from URL path: %s", parsed.Path)
-}
-
-func parseEveryExpr(expr string) (time.Duration, error) {
-	const prefix = "@every "
-	if expr == "" {
-		return 0, errors.New("empty expression provided")
-	}
-	if !strings.HasPrefix(expr, prefix) {
-		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
-	}
-
-	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
 }

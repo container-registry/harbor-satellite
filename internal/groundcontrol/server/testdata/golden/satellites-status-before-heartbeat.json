@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 404,
+    "message": "no status available"
+  },
+  "request": "GET /api/satellites/edge-01/status",
+  "status": 404
+}

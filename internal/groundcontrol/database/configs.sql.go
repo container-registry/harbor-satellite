@@ -8,7 +8,19 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
+
+const configInUse = `-- name: ConfigInUse :one
+SELECT EXISTS (SELECT 1 FROM satellite_configs WHERE config_id = $1)
+`
+
+func (q *Queries) ConfigInUse(ctx context.Context, configID int32) (bool, error) {
+	row := q.db.QueryRowContext(ctx, configInUse, configID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
 
 const createConfig = `-- name: CreateConfig :one
 INSERT INTO configs (config_name, registry_url, config, created_at, updated_at)
@@ -22,8 +34,46 @@ type CreateConfigParams struct {
 	Config      json.RawMessage
 }
 
-func (q *Queries) CreateConfig(ctx context.Context, arg CreateConfigParams) (Config, error) {
+type CreateConfigRow struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) CreateConfig(ctx context.Context, arg CreateConfigParams) (CreateConfigRow, error) {
 	row := q.db.QueryRowContext(ctx, createConfig, arg.ConfigName, arg.RegistryUrl, arg.Config)
+	var i CreateConfigRow
+	err := row.Scan(
+		&i.ID,
+		&i.ConfigName,
+		&i.RegistryUrl,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createFleetConfig = `-- name: CreateFleetConfig :one
+
+INSERT INTO configs (config_name, registry_url, config, created_at, updated_at)
+VALUES ($1, $2, $3, NOW(), NOW())
+RETURNING id, config_name, registry_url, config, created_at, updated_at, version
+`
+
+type CreateFleetConfigParams struct {
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+}
+
+// Adapter-only queries (plan item 1.3): whole rows, version included, for
+// the optimistic update of plan item 3.4.
+func (q *Queries) CreateFleetConfig(ctx context.Context, arg CreateFleetConfigParams) (Config, error) {
+	row := q.db.QueryRowContext(ctx, createFleetConfig, arg.ConfigName, arg.RegistryUrl, arg.Config)
 	var i Config
 	err := row.Scan(
 		&i.ID,
@@ -32,6 +82,7 @@ func (q *Queries) CreateConfig(ctx context.Context, arg CreateConfigParams) (Con
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -51,9 +102,18 @@ SELECT id, config_name, registry_url, config, created_at, updated_at FROM config
 WHERE id = $1
 `
 
-func (q *Queries) GetConfigByID(ctx context.Context, id int32) (Config, error) {
+type GetConfigByIDRow struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) GetConfigByID(ctx context.Context, id int32) (GetConfigByIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getConfigByID, id)
-	var i Config
+	var i GetConfigByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.ConfigName,
@@ -70,8 +130,61 @@ SELECT id, config_name, registry_url, config, created_at, updated_at FROM config
 WHERE config_name = $1
 `
 
-func (q *Queries) GetConfigByName(ctx context.Context, configName string) (Config, error) {
+type GetConfigByNameRow struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) GetConfigByName(ctx context.Context, configName string) (GetConfigByNameRow, error) {
 	row := q.db.QueryRowContext(ctx, getConfigByName, configName)
+	var i GetConfigByNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.ConfigName,
+		&i.RegistryUrl,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getConfigWithVersionByName = `-- name: GetConfigWithVersionByName :one
+SELECT id, config_name, registry_url, config, version FROM configs
+WHERE config_name = $1
+`
+
+type GetConfigWithVersionByNameRow struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	Version     int32
+}
+
+func (q *Queries) GetConfigWithVersionByName(ctx context.Context, configName string) (GetConfigWithVersionByNameRow, error) {
+	row := q.db.QueryRowContext(ctx, getConfigWithVersionByName, configName)
+	var i GetConfigWithVersionByNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.ConfigName,
+		&i.RegistryUrl,
+		&i.Config,
+		&i.Version,
+	)
+	return i, err
+}
+
+const getFleetConfigByID = `-- name: GetFleetConfigByID :one
+SELECT id, config_name, registry_url, config, created_at, updated_at, version FROM configs WHERE id = $1
+`
+
+func (q *Queries) GetFleetConfigByID(ctx context.Context, id int32) (Config, error) {
+	row := q.db.QueryRowContext(ctx, getFleetConfigByID, id)
 	var i Config
 	err := row.Scan(
 		&i.ID,
@@ -80,6 +193,26 @@ func (q *Queries) GetConfigByName(ctx context.Context, configName string) (Confi
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
+	)
+	return i, err
+}
+
+const getFleetConfigByName = `-- name: GetFleetConfigByName :one
+SELECT id, config_name, registry_url, config, created_at, updated_at, version FROM configs WHERE config_name = $1
+`
+
+func (q *Queries) GetFleetConfigByName(ctx context.Context, configName string) (Config, error) {
+	row := q.db.QueryRowContext(ctx, getFleetConfigByName, configName)
+	var i Config
+	err := row.Scan(
+		&i.ID,
+		&i.ConfigName,
+		&i.RegistryUrl,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -112,8 +245,51 @@ const listConfigs = `-- name: ListConfigs :many
 SELECT id, config_name, registry_url, config, created_at, updated_at FROM configs
 `
 
-func (q *Queries) ListConfigs(ctx context.Context) ([]Config, error) {
+type ListConfigsRow struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) ListConfigs(ctx context.Context) ([]ListConfigsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listConfigs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListConfigsRow
+	for rows.Next() {
+		var i ListConfigsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConfigName,
+			&i.RegistryUrl,
+			&i.Config,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFleetConfigs = `-- name: ListFleetConfigs :many
+SELECT id, config_name, registry_url, config, created_at, updated_at, version FROM configs ORDER BY id
+`
+
+func (q *Queries) ListFleetConfigs(ctx context.Context) ([]Config, error) {
+	rows, err := q.db.QueryContext(ctx, listFleetConfigs)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +304,7 @@ func (q *Queries) ListConfigs(ctx context.Context) ([]Config, error) {
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -157,8 +334,98 @@ type UpdateConfigParams struct {
 	Config      json.RawMessage
 }
 
-func (q *Queries) UpdateConfig(ctx context.Context, arg UpdateConfigParams) (Config, error) {
+type UpdateConfigRow struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) UpdateConfig(ctx context.Context, arg UpdateConfigParams) (UpdateConfigRow, error) {
 	row := q.db.QueryRowContext(ctx, updateConfig, arg.ConfigName, arg.RegistryUrl, arg.Config)
+	var i UpdateConfigRow
+	err := row.Scan(
+		&i.ID,
+		&i.ConfigName,
+		&i.RegistryUrl,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateConfigIfVersion = `-- name: UpdateConfigIfVersion :one
+UPDATE configs
+SET registry_url = $3,
+    config = $4,
+    updated_at = NOW(),
+    version = version + 1
+WHERE config_name = $1 AND version = $2
+RETURNING id, config_name, registry_url, config, created_at, updated_at
+`
+
+type UpdateConfigIfVersionParams struct {
+	ConfigName  string
+	Version     int32
+	RegistryUrl string
+	Config      json.RawMessage
+}
+
+type UpdateConfigIfVersionRow struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) UpdateConfigIfVersion(ctx context.Context, arg UpdateConfigIfVersionParams) (UpdateConfigIfVersionRow, error) {
+	row := q.db.QueryRowContext(ctx, updateConfigIfVersion,
+		arg.ConfigName,
+		arg.Version,
+		arg.RegistryUrl,
+		arg.Config,
+	)
+	var i UpdateConfigIfVersionRow
+	err := row.Scan(
+		&i.ID,
+		&i.ConfigName,
+		&i.RegistryUrl,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateFleetConfig = `-- name: UpdateFleetConfig :one
+UPDATE configs
+SET registry_url = $3,
+    config = $4,
+    updated_at = NOW(),
+    version = version + 1
+WHERE id = $1 AND version = $2
+RETURNING id, config_name, registry_url, config, created_at, updated_at, version
+`
+
+type UpdateFleetConfigParams struct {
+	ID          int32
+	Version     int32
+	RegistryUrl string
+	Config      json.RawMessage
+}
+
+func (q *Queries) UpdateFleetConfig(ctx context.Context, arg UpdateFleetConfigParams) (Config, error) {
+	row := q.db.QueryRowContext(ctx, updateFleetConfig,
+		arg.ID,
+		arg.Version,
+		arg.RegistryUrl,
+		arg.Config,
+	)
 	var i Config
 	err := row.Scan(
 		&i.ID,
@@ -167,6 +434,7 @@ func (q *Queries) UpdateConfig(ctx context.Context, arg UpdateConfigParams) (Con
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
