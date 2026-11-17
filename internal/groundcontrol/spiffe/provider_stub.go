@@ -7,12 +7,13 @@ import (
 	"crypto/tls"
 	"errors"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
-var ErrSPIFFENotAvailable = errors.New("SPIFFE not available in this build")
+var ErrSPIFFENotAvailable = errors.New("SPIFFE support not compiled in (nospiffe build)")
 
 // Provider defines the interface for obtaining SPIFFE credentials.
 type Provider interface {
@@ -30,12 +31,23 @@ type Config struct {
 	EndpointSocket string
 }
 
-// LoadConfig returns config with SPIFFE disabled.
+// LoadConfig loads SPIFFE configuration from environment variables.
 func LoadConfig() *Config {
-	return &Config{Enabled: false}
+	cfg := env.GC.SPIFFE
+
+	return &Config{
+		Enabled:        cfg.Enabled,
+		TrustDomain:    cfg.TrustDomain,
+		ProviderType:   cfg.Provider,
+		EndpointSocket: cfg.EndpointSocket,
+	}
 }
 
-// NewProvider returns an error since SPIFFE is not available.
-func NewProvider(_ *Config) (Provider, error) {
-	return nil, ErrSPIFFENotAvailable
+// NewProvider returns a nil provider and no error if SPIFFE is disabled.
+// If SPIFFE is enabled in configuration, it returns ErrSPIFFENotAvailable because SPIFFE is not supported in this build.
+func NewProvider(cfg *Config) (Provider, error) {
+	if cfg.Enabled {
+		return nil, ErrSPIFFENotAvailable
+	}
+	return nil, nil
 }
