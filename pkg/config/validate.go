@@ -71,7 +71,54 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
+	networkWarnings, networkErr := validateAndEnforceNetwork(config)
+	warnings = append(warnings, networkWarnings...)
+	if networkErr != nil {
+		return nil, warnings, networkErr
+	}
+
 	return config, warnings, nil
+}
+
+// validateAndEnforceNetwork checks the optional speed and quota block.
+// An enabled quota with an empty window defaults to day.
+func validateAndEnforceNetwork(config *Config) ([]string, error) {
+	network := &config.AppConfig.Network
+	var warnings []string
+
+	if network.Speed.Enabled {
+		if network.Speed.Limit == "" {
+			return nil, errors.New("network.speed.limit is required when speed is enabled")
+		}
+		if _, err := ParseByteRate(network.Speed.Limit); err != nil {
+			return nil, fmt.Errorf("network.speed.limit: %w", err)
+		}
+	}
+
+	if !network.Quota.Enabled {
+		return warnings, nil
+	}
+
+	if network.Quota.Limit == "" {
+		return nil, errors.New("network.quota.limit is required when quota is enabled")
+	}
+	if _, err := ParseByteSize(network.Quota.Limit); err != nil {
+		return nil, fmt.Errorf("network.quota.limit: %w", err)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(network.Quota.Window)) {
+	case "":
+		if network.Quota.Enabled {
+			network.Quota.Window = "day"
+			warnings = append(warnings, "network.quota.window defaulted to day")
+		}
+	case "sync", "day", "week":
+		network.Quota.Window = strings.ToLower(strings.TrimSpace(network.Quota.Window))
+	default:
+		return nil, fmt.Errorf("network.quota.window %q must be sync, day, or week", network.Quota.Window)
+	}
+
+	return warnings, nil
 }
 
 // validateAndEnforceAuditConfig fills in defaults for the audit syslog transport

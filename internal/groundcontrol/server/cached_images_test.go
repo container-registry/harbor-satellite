@@ -80,10 +80,12 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 		"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
 		"image_count", "reported_at", "created_at", "artifact_ids",
+		"download_bytes_per_second", "bytes_in_window", "bytes_total",
 	}).AddRow(
 		1, 1, "", sql.NullString{}, sql.NullString{},
 		sql.NullString{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
 		sql.NullInt32{Int32: 2, Valid: true}, now, now, pq.Array([]int32{10, 11}),
+		sql.NullFloat64{}, sql.NullInt64{}, sql.NullInt64{},
 	)
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
@@ -132,10 +134,12 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 		"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
 		"image_count", "reported_at", "created_at", "artifact_ids",
+		"download_bytes_per_second", "bytes_in_window", "bytes_total",
 	}).AddRow(
 		1, 1, "", sql.NullString{}, sql.NullString{},
 		sql.NullString{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
 		sql.NullInt32{Int32: 0, Valid: true}, now, now, pq.Array([]int32(nil)),
+		sql.NullFloat64{}, sql.NullInt64{}, sql.NullInt64{},
 	)
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
