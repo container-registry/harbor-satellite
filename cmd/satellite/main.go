@@ -162,6 +162,7 @@ func main() {
 	// Override StoreDir if --registry-data-dir flag or env var is set.
 	if opts.RegistryDataDir != "" {
 		pathConfig.StoreDir = opts.RegistryDataDir
+		pathConfig.StoreDirLegacy = false
 	}
 	if opts.DesiredStateFile != "" {
 		desiredStateFile := opts.DesiredStateFile
@@ -420,6 +421,11 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
+
+	if pathConfig.StoreDirLegacy {
+		log.Info().Str("store_dir", pathConfig.StoreDir).
+			Msg("Using the existing OCI store under the config directory; move it or set --registry-data-dir to relocate it")
+	}
 
 	// Initialize audit logger from config and attach to context
 	auditCfg := cm.GetAuditConfig()
