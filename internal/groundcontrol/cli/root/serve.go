@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -19,15 +20,19 @@ import (
 type serveDependencies struct {
 	loadEnvironment func() error
 	checkHealth     func(context.Context) error
-	ensureProject   func(context.Context) error
-	migrate         func(context.Context) error
-	newServer       func(context.Context) (*server.ServerResult, error)
+	// skipProject reports that Harbor is not available. It is read after
+	// loadEnvironment, because that is what fills the Ground Control config.
+	skipProject   func() bool
+	ensureProject func(context.Context) error
+	migrate       func(context.Context) error
+	newServer     func(context.Context) (*server.ServerResult, error)
 }
 
 func ServeCommand() *cobra.Command {
 	return newServeCommand(serveDependencies{
 		loadEnvironment: env.LoadGC,
 		checkHealth:     harborhealth.CheckHealth,
+		skipProject:     func() bool { return env.GC.Harbor.SkipHealthCheck },
 		ensureProject:   harbor.EnsureSatelliteProject,
 		migrate:         migrator.DoMigrations,
 		newServer:       server.NewServer,
@@ -57,7 +62,12 @@ func runServe(ctx context.Context, out io.Writer, deps serveDependencies) (err e
 	if err := deps.checkHealth(ctx); err != nil {
 		return fmt.Errorf("health check failed: %w", err)
 	}
-	if err := deps.ensureProject(ctx); err != nil {
+	// SKIP_HARBOR_HEALTH_CHECK is the switch for running without Harbor.
+	// The health check and the satellite handlers already return before
+	// they dial it. This step follows that same switch.
+	if deps.skipProject != nil && deps.skipProject() {
+		log.Println("WARNING: satellite project check skipped (SKIP_HARBOR_HEALTH_CHECK=true)")
+	} else if err := deps.ensureProject(ctx); err != nil {
 		return fmt.Errorf("failed to ensure satellite project: %w", err)
 	}
 	if err := deps.migrate(ctx); err != nil {
