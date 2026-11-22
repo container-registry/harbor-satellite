@@ -182,24 +182,14 @@ func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups []str
 	return groupStates, nil
 }
 
-// check if project satellite exists and if does not exist create project satellite
+// ensureSatelliteProjectExists creates the satellite project when it is missing
+// and makes an existing public satellite project private.
 func ensureSatelliteProjectExists(ctx context.Context) error {
-	satExist, err := harbor.GetProject(ctx, "satellite")
-	if err != nil {
+	if err := harbor.EnsureSatelliteProject(ctx); err != nil {
 		log.Println(err)
 		return &AppError{
-			Message: fmt.Sprintf("Error: Checking satellite project: %v", err),
+			Message: fmt.Sprintf("Error: ensuring satellite project: %v", err),
 			Code:    http.StatusBadGateway,
-		}
-	}
-	if !satExist {
-		_, err := harbor.CreateSatelliteProject(ctx)
-		if err != nil {
-			log.Println(err)
-			return &AppError{
-				Message: fmt.Sprintf("Error: creating satellite project: %v", err),
-				Code:    http.StatusBadGateway,
-			}
 		}
 	}
 	return nil
