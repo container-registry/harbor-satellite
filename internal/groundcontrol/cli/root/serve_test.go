@@ -23,7 +23,7 @@ import (
 
 func TestServeInitialization(t *testing.T) {
 	t.Parallel()
-	for _, failAt := range []string{"environment", "health", "migrations", "server"} {
+	for _, failAt := range []string{"environment", "health", "project", "migrations", "server"} {
 		t.Run(failAt, func(t *testing.T) {
 			t.Parallel()
 			failure := errors.New("startup failed")
@@ -41,6 +41,10 @@ func TestServeInitialization(t *testing.T) {
 				checkHealth: func(got context.Context) error {
 					require.Equal(t, ctx, got)
 					return step("health")
+				},
+				ensureProject: func(got context.Context) error {
+					require.Equal(t, ctx, got)
+					return step("project")
 				},
 				migrate: func(got context.Context) error {
 					require.Equal(t, ctx, got)
@@ -60,7 +64,7 @@ func TestServeInitialization(t *testing.T) {
 			rootCmd.SetOut(io.Discard)
 			rootCmd.SetErr(io.Discard)
 			require.ErrorIs(t, rootCmd.ExecuteContext(ctx), failure)
-			order := []string{"environment", "health", "migrations", "server"}
+			order := []string{"environment", "health", "project", "migrations", "server"}
 			for i, name := range order {
 				if name == failAt {
 					require.Equal(t, order[:i+1], calls)
