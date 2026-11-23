@@ -147,7 +147,7 @@ Distributing shared registry credentials to many edge devices means one compromi
 ### 3.2 Certificate Rotation & Credential Storage
 
 - **SVID rotation:** The SPIRE Workload API renews SVIDs before they expire without restarting Satellite.
-- **Robot account lifetime:** Robot accounts expire after `ROBOT_DURATION_DAYS` (Ground Control env, default `30`). Ground Control flags soon-to-expire credentials in the heartbeat response with a `refresh_credentials` event, and Satellite then calls `POST /sat/refresh` on Ground Control. At the time of writing, Ground Control does not register a route for `/sat/refresh`, so this automatic refresh does not complete. Plan robot lifetimes and re-registration accordingly.
+- **Robot account lifetime:** Robot accounts expire after `ROBOT_DURATION_DAYS` (Ground Control env, default `30`). Ground Control flags soon-to-expire credentials in the heartbeat response with a `refresh_credentials` event, and Satellite then calls `POST /satellites/refresh` on Ground Control. The call accepts the satellite SPIFFE SVID or the current robot Basic auth and returns a new robot secret.
 - **Config encryption is opt-in:** By default the robot credentials are stored in plaintext in `config.json`. With `app_config.encrypt_config: true`, Satellite encrypts the file with AES-256-GCM using a key derived from a device fingerprint (`/etc/machine-id`, MAC address, and disk serial). A copy of the encrypted file cannot be decrypted on other hardware. Builds with the `nospiffe` tag do not encrypt.
 
 ### 3.3 SPIRE Attestation Methods for K3s Edge Nodes

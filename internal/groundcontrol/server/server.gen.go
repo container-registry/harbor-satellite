@@ -335,6 +335,11 @@ type PeerDescriptor = config.PeerDescriptor
 // PeerDistributionConfig Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 type PeerDistributionConfig = config.PeerDistributionConfig
 
+// RefreshCredentialsResponse defines model for RefreshCredentialsResponse.
+type RefreshCredentialsResponse struct {
+	Secret string `json:"secret"`
+}
+
 // RegistryCredentials defines model for RegistryCredentials.
 type RegistryCredentials struct {
 	Password string `json:"password,omitempty,omitzero"`
@@ -685,6 +690,9 @@ type ServerInterface interface {
 	// Ping Pings the server.
 	// (GET /ping)
 	Ping(w http.ResponseWriter, r *http.Request)
+	// RefreshSatellite Refreshes the satellite robot secret.
+	// (POST /satellites/refresh)
+	RefreshSatellite(w http.ResponseWriter, r *http.Request)
 	// SpiffeZtr Performs SPIFFE-based zero-touch registration.
 	// (GET /satellites/spiffe-ztr)
 	SpiffeZtr(w http.ResponseWriter, r *http.Request)
@@ -1356,6 +1364,20 @@ func (siw *ServerInterfaceWrapper) Ping(w http.ResponseWriter, r *http.Request) 
 	handler.ServeHTTP(w, r)
 }
 
+// RefreshSatellite operation middleware
+func (siw *ServerInterfaceWrapper) RefreshSatellite(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RefreshSatellite(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SpiffeZtr operation middleware
 func (siw *ServerInterfaceWrapper) SpiffeZtr(w http.ResponseWriter, r *http.Request) {
 
@@ -1578,6 +1600,8 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/login", wrapper.Login).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/ping", wrapper.Ping).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/satellites/refresh", wrapper.RefreshSatellite).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/satellites/spiffe-ztr", wrapper.SpiffeZtr).Methods(http.MethodGet)
 

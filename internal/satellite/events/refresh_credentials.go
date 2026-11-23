@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -89,7 +90,6 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 
 	s.log.Info().
 		Str("status", resp.Status).
-		Str("body", string(body)).
 		Msg("Refresh endpoint response")
 
 	var respBody RefreshEndpointResponse
@@ -109,7 +109,10 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 
 func (s *RefreshCredentialProcess) sendRequest(ctx context.Context) (*http.Response, error) {
 	gcURL := s.cm.ResolveGroundControlURL()
-	reqURL := fmt.Sprintf("%s/sat/refresh", gcURL)
+	reqURL, err := url.JoinPath(gcURL, "satellites", "refresh")
+	if err != nil {
+		return nil, fmt.Errorf("build refresh URL: %w", err)
+	}
 
 	var client *http.Client
 	if s.spiffeClient != nil {
