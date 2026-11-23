@@ -114,6 +114,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
+	recordDownloadStats(req)
 
 	log.Info().Msg("Sending Status Report")
 	groundControlURL := s.cm.ResolveGroundControlURL()

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -165,6 +166,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return nil
 	}
 	log.Info().Msg(reason)
+	budget.Ensure().BeginSync()
 
 	satelliteState, err := f.fetchSatelliteRootStateTimed(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
@@ -470,7 +472,7 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 	f.LogChanges(nil, missing, &groupLog)
 
 	if len(missing) > 0 {
-		if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
+		if err := replicator.Replicate(budget.WithMeter(f.copyContext(ctx)), sourceStore, missing); err != nil {
 			groupLog.Error().Err(err).Msg("Error replicating persisted state")
 			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
 			return result
@@ -721,7 +723,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
-	if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
+	if err := replicator.Replicate(budget.WithMeter(ctx), sourceStore, replicateEntity); err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
 		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
 		return result

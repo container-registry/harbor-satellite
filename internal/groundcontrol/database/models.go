@@ -74,19 +74,22 @@ type SatelliteGroup struct {
 }
 
 type SatelliteStatus struct {
-	ID                 int32
-	SatelliteID        int32
-	Activity           string
-	LatestStateDigest  sql.NullString
-	LatestConfigDigest sql.NullString
-	CpuPercent         sql.NullString
-	MemoryUsedBytes    sql.NullInt64
-	StorageUsedBytes   sql.NullInt64
-	LastSyncDurationMs sql.NullInt64
-	ImageCount         sql.NullInt32
-	ReportedAt         time.Time
-	CreatedAt          time.Time
-	ArtifactIds        []int32
+	ID                     int32
+	SatelliteID            int32
+	Activity               string
+	LatestStateDigest      sql.NullString
+	LatestConfigDigest     sql.NullString
+	CpuPercent             sql.NullString
+	MemoryUsedBytes        sql.NullInt64
+	StorageUsedBytes       sql.NullInt64
+	LastSyncDurationMs     sql.NullInt64
+	ImageCount             sql.NullInt32
+	ReportedAt             time.Time
+	CreatedAt              time.Time
+	ArtifactIds            []int32
+	DownloadBytesPerSecond sql.NullFloat64
+	BytesInWindow          sql.NullInt64
+	BytesTotal             sql.NullInt64
 }
 
 type SatelliteToken struct {
