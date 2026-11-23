@@ -110,7 +110,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 ### Satellite Component Structure
 
 - cmd/satellite/main.go: CLI flags and env vars, store setup, OCI proxy listener, CRI config application, direct-delivery setup, audit logger, config watcher, graceful shutdown
-- pkg/config/: Configuration management (ConfigManager), validation and default enforcement, path resolution, optional encryption on write
+- pkg/config/: Configuration management (ConfigManager), validation and default enforcement, path resolution (XDG/FHS store default), optional encryption on write
 - internal/satellite/satellite.go: Orchestration: picks token or SPIFFE ZTR, starts ZTR, state replication and status report schedulers, registers events
 - internal/satellite/state/: State fetching, replication, token and SPIFFE registration, status reporting, state persistence, direct delivery
 - internal/satellite/store/: `Store` interface (Pull, Fetch, Replicate, Delete); `OCIStore` (ORAS OCI image layout, default local store) and `RegistryStore` (ORAS remote repository, used for Harbor as the source and for a BYO registry as the local store)
@@ -177,7 +177,7 @@ Direct Delivery (experimental): `--direct-delivery` writes docker-save tarballs 
 
 ### Configuration Files
 
-Satellite config directory defaults to `os.UserConfigDir()/satellite` (`~/.config/satellite` on Linux, `~/Library/Application Support/satellite` on macOS), overridable via `--config-dir` / `CONFIG_DIR`. It contains `config.json`, `prev_config.json`, `state.json` and the OCI layout in `oci/` (override with `--registry-data-dir` / `REGISTRY_DATA_DIR`).
+Satellite config directory defaults to `os.UserConfigDir()/satellite` (`~/.config/satellite` on Linux, `~/Library/Application Support/satellite` on macOS), overridable via `--config-dir` / `CONFIG_DIR`. It contains `config.json`, `prev_config.json` and `state.json`. The OCI layout defaults to `$XDG_DATA_HOME/satellite/oci`, falling back to `~/.local/share/satellite/oci`, or `/var/lib/satellite/oci` as root (override with `--registry-data-dir` / `REGISTRY_DATA_DIR`).
 
 `config.json` has two sections:
 - state_config: Harbor robot credentials (`auth`) and the satellite state URL (`state`)

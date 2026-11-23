@@ -153,16 +153,12 @@ func main() {
 		}
 	}
 
-	pathConfig, err := config.ResolvePathConfig(opts.ConfigDir)
+	pathConfig, err := config.ResolvePathConfigWithStore(opts.ConfigDir, opts.RegistryDataDir)
 	if err != nil {
 		fmt.Printf("Error resolving config paths: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Override StoreDir if --registry-data-dir flag or env var is set.
-	if opts.RegistryDataDir != "" {
-		pathConfig.StoreDir = opts.RegistryDataDir
-	}
 	if opts.DesiredStateFile != "" {
 		desiredStateFile := opts.DesiredStateFile
 		if !filepath.IsAbs(desiredStateFile) {

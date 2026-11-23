@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -137,8 +138,15 @@ func TestResolvePathConfig(t *testing.T) {
 		},
 	}
 
+	if os.Geteuid() == 0 {
+		t.Skip("root resolves the store to /var/lib; TestDefaultStoreDir covers that case")
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			dataHome := t.TempDir()
+			t.Setenv("XDG_DATA_HOME", dataHome)
+
 			dir := tt.configDir(t)
 			pathConfig, err := ResolvePathConfig(dir)
 			if tt.expectErr {
@@ -153,9 +161,69 @@ func TestResolvePathConfig(t *testing.T) {
 			require.DirExists(t, pathConfig.ConfigDir)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "prev_config.json"), pathConfig.PrevConfigFile)
-			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "oci"), pathConfig.StoreDir)
+			require.Equal(t, filepath.Join(dataHome, "satellite", "oci"), pathConfig.StoreDir)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "state.json"), pathConfig.StateFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, DefaultDesiredStateFile), pathConfig.DesiredStateFile)
 		})
 	}
+}
+
+func TestDefaultStoreDir(t *testing.T) {
+	tests := []struct {
+		name        string
+		uid         int
+		xdgDataHome string
+		want        func(home string) string
+	}{
+		{
+			name:        "non-root with XDG_DATA_HOME",
+			uid:         1000,
+			xdgDataHome: "/data",
+			want:        func(_ string) string { return "/data/satellite/oci" },
+		},
+		{
+			name: "non-root without XDG_DATA_HOME falls back to ~/.local/share",
+			uid:  1000,
+			want: func(home string) string { return filepath.Join(home, ".local", "share", "satellite", "oci") },
+		},
+		{
+			name:        "relative XDG_DATA_HOME is ignored",
+			uid:         1000,
+			xdgDataHome: "data",
+			want:        func(home string) string { return filepath.Join(home, ".local", "share", "satellite", "oci") },
+		},
+		{
+			name:        "root uses /var/lib and ignores XDG_DATA_HOME",
+			uid:         0,
+			xdgDataHome: "/data",
+			want:        func(_ string) string { return "/var/lib/satellite/oci" },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+
+			homeDir := func() (string, error) { return home, nil }
+			dir, err := defaultStoreDir(tt.uid, tt.xdgDataHome, homeDir)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want(home), dir)
+		})
+	}
+
+	t.Run("home is not needed for root or an absolute XDG_DATA_HOME", func(t *testing.T) {
+		noHome := func() (string, error) { return "", errors.New("no home") }
+
+		dir, err := defaultStoreDir(0, "", noHome)
+		require.NoError(t, err)
+		require.Equal(t, "/var/lib/satellite/oci", dir)
+
+		dir, err = defaultStoreDir(1000, "/data", noHome)
+		require.NoError(t, err)
+		require.Equal(t, "/data/satellite/oci", dir)
+
+		_, err = defaultStoreDir(1000, "", noHome)
+		require.Error(t, err)
+	})
 }

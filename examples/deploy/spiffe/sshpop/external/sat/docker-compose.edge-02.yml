@@ -41,6 +41,7 @@ services:
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
       - SPIFFE_EXPECTED_SERVER_ID=spiffe://harbor-satellite.local/ground-control
       - CONFIG_DIR=/data
+      - REGISTRY_DATA_DIR=/data/oci
     volumes:
       - spire-agent-satellite-2-socket:/run/spire/sockets:ro
       - satellite-2-data:/data

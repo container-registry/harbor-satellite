@@ -64,7 +64,7 @@ And you are running into problems like:
 
 | Mode | How | Status |
 |---|---|---|
-| **Local OCI store** (default) | Artifacts are written to an OCI image layout on disk (`<config-dir>/oci`, managed with ORAS). The satellite does not expose a registry endpoint in this mode. | Available |
+| **Local OCI store** (default) | Artifacts are written to an OCI image layout on disk (managed with ORAS, location under [OCI Store Directory](#oci-store-directory)). The satellite does not expose a registry endpoint in this mode. | Available |
 | **BYO registry** | The satellite replicates into a registry you run at the site (for example `registry:2`). Workloads pull from it, and container runtimes can be configured to mirror through it. | Available |
 | **Direct delivery** | For k3s and RKE2, the satellite writes image tarballs into the node's image import directory. | Experimental |
 | **Transparent proxy** | The satellite serves artifacts from its local store and upstream as an OCI registry, with policy enforcement ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). | In progress |
@@ -146,7 +146,7 @@ Every flag has an environment variable equivalent (`GROUND_CONTROL_URL`, `HARBOR
 
 ### OCI Store Directory
 
-By default, the satellite replicates content into an OCI image layout at `<config-dir>/oci`: `~/.config/satellite/oci` on Linux, `~/Library/Application Support/satellite/oci` on macOS. Override the location with `--registry-data-dir` or `REGISTRY_DATA_DIR`. The flag takes precedence over the environment variable, which takes precedence over the default path.
+By default, the satellite replicates content into an OCI image layout at `$XDG_DATA_HOME/satellite/oci`, falling back to `~/.local/share/satellite/oci`, or `/var/lib/satellite/oci` when running as root. Override the location with `--registry-data-dir` or `REGISTRY_DATA_DIR`. The flag takes precedence over the environment variable, which takes precedence over the default path.
 
 ### BYO (Bring Your Own) Registry
 

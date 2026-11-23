@@ -27,6 +27,7 @@ type OCIStore struct {
 	mu                sync.RWMutex
 	provenance        sync.Map
 	beforePublishLock func()
+	lock              *os.File // held for the process lifetime
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
@@ -36,14 +37,20 @@ func NewOCIStore(root string) (*OCIStore, error) {
 	}
 	// A killed process cannot run the stage cleanup. This store is opened once,
 	// before replication, so anything still under .stage belongs to that process.
+	lock, err := lockLayout(root)
+	if err != nil {
+		return nil, err
+	}
 	if err := clearStaleStages(root); err != nil {
+		closeLock(lock)
 		return nil, err
 	}
 	target, err := oci.New(root)
 	if err != nil {
+		closeLock(lock)
 		return nil, fmt.Errorf("open OCI store at %s: %w", root, err)
 	}
-	return &OCIStore{root: root, store: target}, nil
+	return &OCIStore{root: root, store: target, lock: lock}, nil
 }
 
 // Pull resolves already retained content. It deliberately performs no request
@@ -563,4 +570,11 @@ func (r *lockedReadSeekCloser) Close() error {
 	err := r.ReadSeekCloser.Close()
 	r.once.Do(r.unlock)
 	return err
+}
+
+// closeLock releases the layout lock after a failed open. A nil lock is a no-op.
+func closeLock(lock *os.File) {
+	if lock != nil {
+		_ = lock.Close()
+	}
 }
