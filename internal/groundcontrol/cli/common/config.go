@@ -100,12 +100,50 @@ func Load(command *cobra.Command) *Runtime {
 				return fmt.Errorf("read config file %q: %w", rootFlags.configFile, err)
 			}
 		}
-		if err := runtime.loadStoredToken(); err != nil {
-			return err
+		if cmd.Annotations[KeepStoredSessionAnnotation] == "" {
+			if err := runtime.loadStoredToken(); err != nil {
+				return err
+			}
 		}
 		return runtime.Initialize()
 	}
 	return runtime
+}
+
+// KeepStoredSessionAnnotation marks a command that only reads the saved
+// session. The pre-run then leaves it alone instead of loading its token and
+// removing it once it expired, so the command can still report it.
+const KeepStoredSessionAnnotation = "groundcontrol/keep-stored-session"
+
+// SessionInfo describes the saved session for the active server.
+type SessionInfo struct {
+	Server    string
+	Username  string
+	ExpiresAt time.Time
+	Expired   bool
+}
+
+// StoredSession returns the saved session for the configured server. The bool is
+// false when no session is stored. An expired session is reported rather than
+// discarded, so whoami can show that the session needs a new login.
+func (r *Runtime) StoredSession() (SessionInfo, bool, error) {
+	credentials, err := r.loadCredentials()
+	if err != nil {
+		return SessionInfo{}, false, err
+	}
+	server := normalizeServerURL(r.config.GetString(urlKey))
+	session, exists := credentials.store.Sessions[sessionID(server)]
+	if !exists {
+		return SessionInfo{}, false, nil
+	}
+	info := SessionInfo{Server: session.Server, Username: session.Username}
+	if session.ExpiresAt != "" {
+		if expiresAt, err := time.Parse(time.RFC3339Nano, session.ExpiresAt); err == nil {
+			info.ExpiresAt = expiresAt
+			info.Expired = !time.Now().Before(expiresAt)
+		}
+	}
+	return info, true, nil
 }
 
 func (r *Runtime) loadStoredToken() error {
