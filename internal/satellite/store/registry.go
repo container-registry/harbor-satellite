@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -272,7 +273,9 @@ func registryHost(reference string) (string, error) {
 
 func registryHTTPClient(cfg config.TLSConfig) (*http.Client, error) {
 	if cfg.CertFile == "" && cfg.KeyFile == "" && cfg.CAFile == "" && !cfg.SkipVerify {
-		return retry.DefaultClient, nil
+		client := *retry.DefaultClient
+		client.Transport = budget.ContextTransport(client.Transport)
+		return &client, nil
 	}
 	tlsConfig, err := satTLS.LoadClientTLSConfig(&satTLS.Config{
 		CertFile: cfg.CertFile, KeyFile: cfg.KeyFile, CAFile: cfg.CAFile, SkipVerify: cfg.SkipVerify, MinVersion: tls.VersionTLS12,
@@ -287,6 +290,6 @@ func registryHTTPClient(cfg config.TLSConfig) (*http.Client, error) {
 	transport := defaultTransport.Clone()
 	transport.TLSClientConfig = tlsConfig
 	client := *retry.DefaultClient
-	client.Transport = transport
+	client.Transport = budget.ContextTransport(transport)
 	return &client, nil
 }
