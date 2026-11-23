@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +35,7 @@ type fakeStore struct {
 	pull           func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error)
 	fetch          func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error)
 	replicate      func(context.Context, store.Store, []store.Artifact) error
+	referrers      func(context.Context, store.Artifact, digest.Digest, string) ([]ocispec.Descriptor, error)
 }
 
 func (f *fakeStore) Pull(ctx context.Context, artifact store.Artifact, resource store.PullResource) (ocispec.Descriptor, error) {
@@ -62,6 +64,13 @@ func (f *fakeStore) Fetch(ctx context.Context, artifact store.Artifact, descript
 func (f *fakeStore) Replicate(ctx context.Context, source store.Store, artifacts []store.Artifact) error {
 	f.replicateCalls.Add(1)
 	return f.replicate(ctx, source, artifacts)
+}
+
+func (f *fakeStore) Referrers(ctx context.Context, artifact store.Artifact, subject digest.Digest, artifactType string) ([]ocispec.Descriptor, error) {
+	if f.referrers == nil {
+		return nil, nil
+	}
+	return f.referrers(ctx, artifact, subject, artifactType)
 }
 
 func (*fakeStore) Delete(context.Context, []store.Artifact) error { return nil }
@@ -511,3 +520,81 @@ func (writer *observingResponseWriter) bytes() []byte {
 }
 
 var _ store.Store = (*fakeStore)(nil)
+
+func TestListReferrersServesLocalReferrers(t *testing.T) {
+	subject := digest.FromString("subject")
+	bundle := ocispec.Descriptor{
+		MediaType:    ocispec.MediaTypeImageManifest,
+		Digest:       digest.FromString("bundle"),
+		Size:         10,
+		ArtifactType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+	}
+	var gotArtifact store.Artifact
+	var gotType string
+	local := descriptorStore(ocispec.Descriptor{}, nil)
+	local.referrers = func(_ context.Context, artifact store.Artifact, got digest.Digest, artifactType string) ([]ocispec.Descriptor, error) {
+		require.Equal(t, subject, got)
+		gotArtifact, gotType = artifact, artifactType
+		return []ocispec.Descriptor{bundle}, nil
+	}
+	remote := descriptorStore(ocispec.Descriptor{}, nil)
+	remote.referrers = func(context.Context, store.Artifact, digest.Digest, string) ([]ocispec.Descriptor, error) {
+		t.Fatal("proxy asked Harbor although the referrer is retained")
+		return nil, nil
+	}
+	handler := proxy.New(newPull(t, proxy.ModeProxy, local, remote)).Handler()
+
+	response := serve(handler, http.MethodGet, "/v2/team/app/referrers/"+subject.String()+"?artifactType="+url.QueryEscape(bundle.ArtifactType), nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, ocispec.MediaTypeImageIndex, response.Header().Get("Content-Type"))
+	require.Equal(t, "artifactType", response.Header().Get("OCI-Filters-Applied"))
+	require.Equal(t, store.Artifact{Name: "team/app"}, gotArtifact)
+	require.Equal(t, bundle.ArtifactType, gotType)
+	var index ocispec.Index
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &index))
+	require.Equal(t, ocispec.MediaTypeImageIndex, index.MediaType)
+	require.Equal(t, []ocispec.Descriptor{bundle}, index.Manifests)
+}
+
+func TestListReferrersAsksHarborOnlyInProxyMode(t *testing.T) {
+	subject := digest.FromString("subject")
+	upstream := ocispec.Descriptor{MediaType: ocispec.MediaTypeImageManifest, Digest: digest.FromString("upstream"), Size: 3}
+	for _, test := range []struct {
+		mode proxy.Mode
+		want []ocispec.Descriptor
+	}{
+		{mode: proxy.ModeProxy, want: []ocispec.Descriptor{upstream}},
+		{mode: proxy.ModeReplica, want: []ocispec.Descriptor{}},
+	} {
+		t.Run(test.mode.String(), func(t *testing.T) {
+			local := descriptorStore(ocispec.Descriptor{}, nil)
+			remote := descriptorStore(ocispec.Descriptor{}, nil)
+			var remoteCalls atomic.Int32
+			remote.referrers = func(context.Context, store.Artifact, digest.Digest, string) ([]ocispec.Descriptor, error) {
+				remoteCalls.Add(1)
+				return []ocispec.Descriptor{upstream}, nil
+			}
+			handler := proxy.New(newPull(t, test.mode, local, remote)).Handler()
+
+			response := serve(handler, http.MethodGet, "/v2/team/app/referrers/"+subject.String(), nil)
+
+			require.Equal(t, http.StatusOK, response.Code)
+			require.Empty(t, response.Header().Get("OCI-Filters-Applied"))
+			var index ocispec.Index
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &index))
+			require.Equal(t, test.want, index.Manifests)
+			if test.mode == proxy.ModeReplica {
+				require.Equal(t, int32(0), remoteCalls.Load())
+			}
+		})
+	}
+}
+
+func TestListReferrersInProxyModeRequiresRemoteStore(t *testing.T) {
+	handler := proxy.New(newPull(t, proxy.ModeProxy, descriptorStore(ocispec.Descriptor{}, nil), nil)).Handler()
+
+	response := serve(handler, http.MethodGet, "/v2/team/app/referrers/"+digest.FromString("subject").String(), nil)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+}

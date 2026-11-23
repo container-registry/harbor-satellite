@@ -13,6 +13,8 @@ vars:
   PROJECT_NAME: harbor-satellite
   REGISTRY_NAME: test-registry
   DEST_NAMESPACE: test-group
+  COSIGN_IMAGE: ghcr.io/sigstore/cosign/cosign:v3.1.4
+  COSIGN_DIR: "{{.ROOT_DIR}}/test/e2e/docker/cosign"
 
 tasks:
   test:
@@ -23,9 +25,11 @@ tasks:
       - task: wait-harbor
       - task: wait-groundcontrol
       - task: init-harbor
+      - task: sign-image
       - task: init-groundcontrol
       - task: register-satellite
       - task: verify
+      - task: verify-signatures
 
   test-byo:
     desc: Run BYO registry E2E test
@@ -35,9 +39,11 @@ tasks:
       - task: wait-harbor
       - task: wait-groundcontrol
       - task: init-harbor
+      - task: sign-image
       - task: init-groundcontrol-byo
       - task: register-satellite-byo
       - task: verify-byo
+      - task: verify-signatures-byo
       - echo "BYO registry E2E test passed"
 
   test-spiffe:
@@ -206,6 +212,7 @@ tasks:
       - echo "Stopping e2e containers..."
       - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite 2>/dev/null || true
+      - rm -rf "{{.COSIGN_DIR}}"
       - echo "Cleanup complete"
     silent: true
 
@@ -336,6 +343,42 @@ tasks:
           -d '{"policy_id": 1}'
 
         echo "Harbor initialized"
+
+  sign-image:
+    desc: Sign the test image in Harbor with cosign, as a tag-scheme signature and as OCI referrers
+    cmds:
+      - |
+        set -eu
+        rm -rf "{{.COSIGN_DIR}}"
+        mkdir -p "{{.COSIGN_DIR}}"
+        # The cosign image runs as a non-root user that does not own the bind mount.
+        chmod 0777 "{{.COSIGN_DIR}}"
+        cosign() {
+          docker run --rm --network harbor-e2e -e COSIGN_PASSWORD= \
+            -v "{{.COSIGN_DIR}}:/keys" -w /keys {{.COSIGN_IMAGE}} "$@"
+        }
+        DIGEST=$(curl -sf -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          "{{.HARBOR_API}}/projects/{{.PROJECT_NAME}}/repositories/alpine/artifacts/latest" | \
+          grep -o '"digest":"sha256:[a-f0-9]*"' | head -1 | cut -d'"' -f4)
+        if [ -z "$DIGEST" ]; then
+          echo "ERROR: could not read the alpine digest from Harbor"
+          exit 1
+        fi
+        echo "$DIGEST" > "{{.COSIGN_DIR}}/digest"
+        IMAGE="core:8080/{{.PROJECT_NAME}}/alpine@$DIGEST"
+        AUTH="--allow-http-registry --registry-username {{.HARBOR_ADMIN_USER}} --registry-password {{.HARBOR_ADMIN_PASSWORD}}"
+        cosign generate-key-pair
+        echo "Signing $IMAGE with the cosign tag scheme..."
+        cosign sign --key cosign.key --tlog-upload=false --use-signing-config=false \
+          --new-bundle-format=false $AUTH -y "$IMAGE"
+        echo "Signing $IMAGE with a sigstore bundle referrer..."
+        cosign sign --key cosign.key --tlog-upload=false --use-signing-config=false \
+          --new-bundle-format=true $AUTH -y "$IMAGE"
+        echo "Attaching an SPDX attestation referrer..."
+        printf '{"spdxVersion":"SPDX-2.3","name":"alpine","SPDXID":"SPDXRef-DOCUMENT"}' > "{{.COSIGN_DIR}}/sbom.json"
+        cosign attest --key cosign.key --tlog-upload=false --use-signing-config=false \
+          --new-bundle-format=true --type spdxjson --predicate sbom.json $AUTH -y "$IMAGE"
+        echo "Image signed"
 
   init-groundcontrol:
     desc: Initialize Ground Control with config and group
@@ -677,6 +720,76 @@ tasks:
           -e USE_UNSECURE=true \
           satellite:e2e
 
+  verify-signatures:
+    desc: Verify the image signatures with cosign against the satellite proxy while Harbor is down
+    cmds:
+      - |
+        set -eu
+        DIGEST=$(cat "{{.COSIGN_DIR}}/digest")
+        REFERRERS_TAG="$(echo "$DIGEST" | tr ':' '-')"
+        echo "Waiting for $REFERRERS_TAG.sig and the referrers index $REFERRERS_TAG in the satellite layout..."
+        for i in $(seq 1 12); do
+          # The referrers index is tagged last, after the cosign tags.
+          if docker exec satellite grep -q "alpine:$REFERRERS_TAG.sig\"" /data/oci/index.json &&
+            docker exec satellite grep -q "alpine:$REFERRERS_TAG\"" /data/oci/index.json; then
+            break
+          fi
+          if [ "$i" -eq 12 ]; then
+            echo "ERROR: signature tag was not replicated"
+            docker logs satellite 2>&1 | tail -50
+            exit 1
+          fi
+          sleep 5
+        done
+        # With Harbor stopped, a proxy-mode miss cannot fill from upstream, so
+        # every signature below is served from the satellite's own store.
+        docker stop core
+        IMAGE="127.0.0.1:8585/{{.PROJECT_NAME}}/alpine@$DIGEST"
+        cosign() {
+          docker run --rm --network container:satellite \
+            -v "{{.COSIGN_DIR}}:/keys:ro" -w /keys {{.COSIGN_IMAGE}} "$@"
+        }
+        OPTS="--key cosign.pub --insecure-ignore-tlog=true --allow-http-registry"
+        echo "Verifying the tag-scheme signature through the satellite..."
+        cosign verify $OPTS --new-bundle-format=false "$IMAGE"
+        echo "Verifying the bundle referrer through the satellite..."
+        cosign verify $OPTS --new-bundle-format=true "$IMAGE"
+        echo "Verifying the SPDX attestation referrer through the satellite..."
+        cosign verify-attestation $OPTS --new-bundle-format=true --type spdxjson "$IMAGE" > /dev/null
+        echo "Signature E2E test passed: cosign verified the satellite copy"
+
+  verify-signatures-byo:
+    desc: Verify the image signatures with cosign against the BYO registry while Harbor is down
+    cmds:
+      - |
+        set -eu
+        DIGEST=$(cat "{{.COSIGN_DIR}}/digest")
+        IMAGE="byo-registry:5000/{{.PROJECT_NAME}}/alpine@$DIGEST"
+        cosign() {
+          docker run --rm --network harbor-e2e \
+            -v "{{.COSIGN_DIR}}:/keys:ro" -w /keys {{.COSIGN_IMAGE}} "$@"
+        }
+        OPTS="--key cosign.pub --insecure-ignore-tlog=true --allow-http-registry"
+        for i in $(seq 1 12); do
+          if cosign verify $OPTS --new-bundle-format=false "$IMAGE" > /dev/null 2>&1; then
+            break
+          fi
+          if [ "$i" -eq 12 ]; then
+            echo "ERROR: signature did not reach the BYO registry"
+            docker logs satellite-byo 2>&1 | tail -50
+            exit 1
+          fi
+          sleep 5
+        done
+        # The BYO registry, not Harbor, must hold every signature.
+        docker stop core
+        echo "Verifying the tag-scheme signature in the BYO registry..."
+        cosign verify $OPTS --new-bundle-format=false "$IMAGE"
+        echo "Verifying the bundle referrer in the BYO registry..."
+        cosign verify $OPTS --new-bundle-format=true "$IMAGE"
+        cosign verify-attestation $OPTS --new-bundle-format=true --type spdxjson "$IMAGE" > /dev/null
+        echo "BYO signature E2E test passed"
+
   verify-byo:
     desc: Verify image replication to BYO registry
     cmds:
@@ -713,6 +826,7 @@ tasks:
       - echo "Stopping BYO e2e containers..."
       - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite-byo byo-registry 2>/dev/null || true
+      - rm -rf "{{.COSIGN_DIR}}"
       - echo "BYO cleanup complete"
     silent: true
 
