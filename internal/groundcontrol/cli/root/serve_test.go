@@ -23,7 +23,7 @@ import (
 
 func TestServeInitialization(t *testing.T) {
 	t.Parallel()
-	for _, failAt := range []string{"environment", "health", "migrations", "server"} {
+	for _, failAt := range []string{"environment", "health", "project", "migrations", "server"} {
 		t.Run(failAt, func(t *testing.T) {
 			t.Parallel()
 			failure := errors.New("startup failed")
@@ -41,6 +41,10 @@ func TestServeInitialization(t *testing.T) {
 				checkHealth: func(got context.Context) error {
 					require.Equal(t, ctx, got)
 					return step("health")
+				},
+				ensureProject: func(got context.Context) error {
+					require.Equal(t, ctx, got)
+					return step("project")
 				},
 				migrate: func(got context.Context) error {
 					require.Equal(t, ctx, got)
@@ -60,7 +64,7 @@ func TestServeInitialization(t *testing.T) {
 			rootCmd.SetOut(io.Discard)
 			rootCmd.SetErr(io.Discard)
 			require.ErrorIs(t, rootCmd.ExecuteContext(ctx), failure)
-			order := []string{"environment", "health", "migrations", "server"}
+			order := []string{"environment", "health", "project", "migrations", "server"}
 			for i, name := range order {
 				if name == failAt {
 					require.Equal(t, order[:i+1], calls)
@@ -68,6 +72,62 @@ func TestServeInitialization(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServeSkipsProjectWhenHarborIsSkipped(t *testing.T) {
+	t.Parallel()
+	var calls []string
+	deps := serveDependencies{
+		loadEnvironment: func() error {
+			calls = append(calls, "environment")
+			return nil
+		},
+		checkHealth: func(context.Context) error {
+			calls = append(calls, "health")
+			return nil
+		},
+		skipProject: func() bool { return true },
+		ensureProject: func(context.Context) error {
+			t.Fatal("project check ran while SKIP_HARBOR_HEALTH_CHECK is set")
+			return nil
+		},
+		migrate: func(context.Context) error {
+			calls = append(calls, "migrations")
+			return errors.New("stop after migrations")
+		},
+		newServer: func(context.Context) (*server.ServerResult, error) {
+			t.Fatal("server created")
+			return nil, nil
+		},
+	}
+	cmd := newServeCommand(deps)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.ErrorContains(t, cmd.ExecuteContext(t.Context()), "stop after migrations")
+	require.Equal(t, []string{"environment", "health", "migrations"}, calls)
+}
+
+func TestServeChecksProjectWhenHarborIsRequired(t *testing.T) {
+	t.Parallel()
+	var calls []string
+	deps := serveDependencies{
+		loadEnvironment: func() error { return nil },
+		checkHealth:     func(context.Context) error { return nil },
+		skipProject:     func() bool { return false },
+		ensureProject: func(context.Context) error {
+			calls = append(calls, "project")
+			return errors.New("project failed")
+		},
+		migrate: func(context.Context) error {
+			t.Fatal("migrations ran after the project check failed")
+			return nil
+		},
+	}
+	cmd := newServeCommand(deps)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.ErrorContains(t, cmd.ExecuteContext(t.Context()), "failed to ensure satellite project")
+	require.Equal(t, []string{"project"}, calls)
 }
 
 func TestServeAlreadyCancelled(t *testing.T) {

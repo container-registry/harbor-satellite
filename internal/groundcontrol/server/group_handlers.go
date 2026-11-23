@@ -15,20 +15,15 @@ import (
 // groupSyncHarbor is the Harbor side of SyncGroup. Tests replace it so group
 // sync can be checked without a Harbor.
 type groupSyncHarbor interface {
-	ProjectExists(ctx context.Context, name string) (bool, error)
-	CreateSatelliteProject(ctx context.Context) (bool, error)
+	EnsureSatelliteProject(ctx context.Context) error
 	CreateStateArtifact(ctx context.Context, req GroupSyncRequest) error
 	UpdateRobotProjects(ctx context.Context, projects []string, robotID string) error
 }
 
 type harborGroupSync struct{}
 
-func (harborGroupSync) ProjectExists(ctx context.Context, name string) (bool, error) {
-	return harbor.GetProject(ctx, name)
-}
-
-func (harborGroupSync) CreateSatelliteProject(ctx context.Context) (bool, error) {
-	return harbor.CreateSatelliteProject(ctx)
+func (harborGroupSync) EnsureSatelliteProject(ctx context.Context) error {
+	return harbor.EnsureSatelliteProject(ctx)
 }
 
 func (harborGroupSync) CreateStateArtifact(ctx context.Context, req GroupSyncRequest) error {
@@ -92,28 +87,13 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	satExist, err := s.groupSync.ProjectExists(r.Context(), "satellite")
-	if err != nil {
-		log.Println("Error checking satellite project existence:", err)
-		err := &AppError{
-			Message: fmt.Sprintf("Error: Checking satellite project: %v", err),
+	if err := s.groupSync.EnsureSatelliteProject(r.Context()); err != nil {
+		log.Println("Error ensuring satellite project:", err)
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf("Error: ensuring satellite project: %v", err),
 			Code:    http.StatusBadGateway,
-		}
-		HandleAppError(w, err)
+		})
 		return
-	}
-
-	if !satExist {
-		_, err := s.groupSync.CreateSatelliteProject(r.Context())
-		if err != nil {
-			log.Println("Error creating satellite project:", err)
-			err := &AppError{
-				Message: fmt.Sprintf("Error: creating satellite project: %v", err),
-				Code:    http.StatusBadGateway,
-			}
-			HandleAppError(w, err)
-			return
-		}
 	}
 
 	err = s.groupSync.CreateStateArtifact(r.Context(), req)

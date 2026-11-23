@@ -131,12 +131,8 @@ type fakeGroupSync struct {
 	projects  []string
 }
 
-func (*fakeGroupSync) ProjectExists(context.Context, string) (bool, error) {
-	return true, nil
-}
-
-func (*fakeGroupSync) CreateSatelliteProject(context.Context) (bool, error) {
-	return true, nil
+func (*fakeGroupSync) EnsureSatelliteProject(context.Context) error {
+	return nil
 }
 
 func (f *fakeGroupSync) CreateStateArtifact(context.Context, GroupSyncRequest) error {
