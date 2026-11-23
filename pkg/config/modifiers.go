@@ -117,6 +117,12 @@ func SetPeerDistributionConfig(peers PeerDistributionConfig) func(*Config) {
 	}
 }
 
+func SetSignaturePolicy(policy SignaturePolicyConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.SignaturePolicy = policy
+	}
+}
+
 func SetDirectDelivery(dd DirectDeliveryConfig) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.DirectDelivery = dd

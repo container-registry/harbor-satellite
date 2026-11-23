@@ -146,10 +146,13 @@ type AppConfig struct {
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
-	Spiffe                    SPIFFEClientConfig     `json:"spiffe,omitempty,omitzero"`
-	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty,omitzero"`
-	Tls                       TLSConfig              `json:"tls,omitempty,omitzero"`
-	UseUnsecure               bool                   `json:"use_unsecure,omitempty,omitzero"`
+
+	// SignaturePolicy Requires cosign signatures on replicated and proxied images. A signature passes when any public key or the keyless identity verifies it. An omitted or disabled block copies images without checks.
+	SignaturePolicy          SignaturePolicyConfig `json:"signature_policy,omitempty,omitzero"`
+	Spiffe                   SPIFFEClientConfig    `json:"spiffe,omitempty,omitzero"`
+	StateReplicationInterval string                `json:"state_replication_interval,omitempty,omitzero"`
+	Tls                      TLSConfig             `json:"tls,omitempty,omitzero"`
+	UseUnsecure              bool                  `json:"use_unsecure,omitempty,omitzero"`
 }
 
 // AppError defines model for AppError.
@@ -278,6 +281,9 @@ type HealthResponse struct {
 
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
+
+// KeylessSignatureConfig defines model for KeylessSignatureConfig.
+type KeylessSignatureConfig = config.KeylessSignatureConfig
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -454,6 +460,9 @@ type SatelliteStatusResponse struct {
 	SatelliteID        int32               `json:"SatelliteID,omitempty,omitzero"`
 	StorageUsedBytes   NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
 }
+
+// SignaturePolicyConfig Requires cosign signatures on replicated and proxied images. A signature passes when any public key or the keyless identity verifies it. An omitted or disabled block copies images without checks.
+type SignaturePolicyConfig = config.SignaturePolicyConfig
 
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
 type StaleSatelliteResponse struct {

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2"
@@ -29,6 +30,10 @@ func (r *recordingStore) Pull(context.Context, Artifact, PullResource) (ocispec.
 
 func (r *recordingStore) Fetch(context.Context, Artifact, ocispec.Descriptor, PullResource, http.Header) (*http.Response, error) {
 	return nil, errors.New("unexpected fetch")
+}
+
+func (r *recordingStore) Referrers(context.Context, Artifact, digest.Digest, string) ([]ocispec.Descriptor, error) {
+	return nil, errors.New("unexpected referrers")
 }
 
 func (r *recordingStore) Delete(context.Context, []Artifact) error {

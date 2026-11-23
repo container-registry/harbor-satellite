@@ -152,7 +152,7 @@ func TestProxyStoresPrioritizesBYORegistry(t *testing.T) {
 			LocalRegistryCredentials: config.RegistryCredentials{URL: "http://byor.example.com"},
 		},
 	})
-	local, remote, err := proxyStores(cm, t.TempDir())
+	local, remote, err := proxyStores(cm, t.TempDir(), nil)
 	require.NoError(t, err)
 	require.IsType(t, &store.RegistryStore{}, local)
 	require.IsType(t, &store.RegistryStore{}, remote)
@@ -175,7 +175,7 @@ func TestProxyStoresUseCredentialsRegisteredAfterStartup(t *testing.T) {
 		HarborRegistryURL: upstream.URL,
 		UseUnsecure:       true,
 	}})
-	local, remote, err := proxyStores(cm, t.TempDir())
+	local, remote, err := proxyStores(cm, t.TempDir(), nil)
 	require.NoError(t, err)
 	require.IsType(t, &store.OCIStore{}, local)
 	artifact := store.Artifact{Name: "team/app", Tag: "missing"}
