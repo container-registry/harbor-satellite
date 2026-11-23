@@ -177,7 +177,7 @@ Direct Delivery (experimental): `--direct-delivery` writes docker-save tarballs 
 
 ### Configuration Files
 
-Satellite config directory defaults to `os.UserConfigDir()/satellite` (`~/.config/satellite` on Linux, `~/Library/Application Support/satellite` on macOS), overridable via `--config-dir` / `CONFIG_DIR`. It contains `config.json`, `prev_config.json` and `state.json`. The OCI layout defaults to `$XDG_DATA_HOME/satellite/oci`, falling back to `~/.local/share/satellite/oci`, or `/var/lib/satellite/oci` as root (override with `--registry-data-dir` / `REGISTRY_DATA_DIR`); a layout already at `<config dir>/oci` is kept while the new location has no `index.json` (`config.PathConfig.StoreDirLegacy`).
+Satellite config directory defaults to `os.UserConfigDir()/satellite` (`~/.config/satellite` on Linux, `~/Library/Application Support/satellite` on macOS), overridable via `--config-dir` / `CONFIG_DIR`. It contains `config.json`, `prev_config.json` and `state.json`. The OCI layout defaults to `$XDG_DATA_HOME/satellite/oci`, falling back to `~/.local/share/satellite/oci`, or `/var/lib/satellite/oci` as root (override with `--registry-data-dir` / `REGISTRY_DATA_DIR`).
 
 `config.json` has two sections:
 - state_config: Harbor robot credentials (`auth`) and the satellite state URL (`state`)

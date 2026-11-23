@@ -65,6 +65,7 @@ services:
       - TOKEN=${TOKEN:-}
       - USE_UNSECURE=${USE_UNSECURE:-false}
       - CONFIG_DIR=/data
+      - REGISTRY_DATA_DIR=/data/oci
     volumes:
       - satellite-data:/data
     depends_on:

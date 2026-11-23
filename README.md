@@ -146,7 +146,7 @@ Every flag has an environment variable equivalent (`GROUND_CONTROL_URL`, `HARBOR
 
 ### OCI Store Directory
 
-By default, the satellite replicates content into an OCI image layout at `$XDG_DATA_HOME/satellite/oci`, falling back to `~/.local/share/satellite/oci`, or `/var/lib/satellite/oci` when running as root. A store left at `<config-dir>/oci` by an earlier release keeps being used while the new location holds no layout, so an upgrade does not replicate everything again. Override the location with `--registry-data-dir` or `REGISTRY_DATA_DIR`. The flag takes precedence over the environment variable, which takes precedence over the default path.
+By default, the satellite replicates content into an OCI image layout at `$XDG_DATA_HOME/satellite/oci`, falling back to `~/.local/share/satellite/oci`, or `/var/lib/satellite/oci` when running as root. Override the location with `--registry-data-dir` or `REGISTRY_DATA_DIR`. The flag takes precedence over the environment variable, which takes precedence over the default path.
 
 ### BYO (Bring Your Own) Registry
 

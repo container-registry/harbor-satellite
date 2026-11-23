@@ -153,17 +153,12 @@ func main() {
 		}
 	}
 
-	pathConfig, err := config.ResolvePathConfig(opts.ConfigDir)
+	pathConfig, err := config.ResolvePathConfigWithStore(opts.ConfigDir, opts.RegistryDataDir)
 	if err != nil {
 		fmt.Printf("Error resolving config paths: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Override StoreDir if --registry-data-dir flag or env var is set.
-	if opts.RegistryDataDir != "" {
-		pathConfig.StoreDir = opts.RegistryDataDir
-		pathConfig.StoreDirLegacy = false
-	}
 	if opts.DesiredStateFile != "" {
 		desiredStateFile := opts.DesiredStateFile
 		if !filepath.IsAbs(desiredStateFile) {
@@ -421,11 +416,6 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
-
-	if pathConfig.StoreDirLegacy {
-		log.Info().Str("store_dir", pathConfig.StoreDir).
-			Msg("Using the existing OCI store under the config directory; move it or set --registry-data-dir to relocate it")
-	}
 
 	// Initialize audit logger from config and attach to context
 	auditCfg := cm.GetAuditConfig()

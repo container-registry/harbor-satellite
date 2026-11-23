@@ -785,6 +785,7 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
+          -e REGISTRY_DATA_DIR=/satellite-state/oci \
           satellite:e2e
 
   crash-and-restart-satellite:
@@ -804,6 +805,7 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
+          -e REGISTRY_DATA_DIR=/satellite-state/oci \
           satellite:e2e
 
         echo "Waiting for satellite to start..."
@@ -920,6 +922,7 @@ tasks:
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
           -e CONFIG_DIR=/satellite-state \
+          -e REGISTRY_DATA_DIR=/satellite-state/oci \
           satellite:e2e
 
   crash-and-restart-satellite-byo:
@@ -942,6 +945,7 @@ tasks:
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
           -e CONFIG_DIR=/satellite-state \
+          -e REGISTRY_DATA_DIR=/satellite-state/oci \
           satellite:e2e
 
         echo "Waiting for satellite to start..."
