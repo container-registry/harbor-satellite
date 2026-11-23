@@ -37,6 +37,7 @@ type flags struct {
 	token      string
 	timeout    time.Duration
 	insecure   bool
+	output     string
 }
 
 // Runtime owns the configuration and generated client used by CLI commands.
@@ -83,6 +84,7 @@ func Load(command *cobra.Command) *Runtime {
 	command.PersistentFlags().StringVar(&rootFlags.token, "token", "", "Ground Control bearer token")
 	command.PersistentFlags().DurationVar(&rootFlags.timeout, "timeout", defaultTimeout, "HTTP request timeout")
 	command.PersistentFlags().BoolVar(&rootFlags.insecure, "insecure", false, "skip HTTPS certificate verification")
+	command.PersistentFlags().StringVar(&rootFlags.output, "output", defaultOutput(), "output format: json, yaml, or table")
 
 	mustBindFlag(configuration.BindPFlag(urlKey, command.PersistentFlags().Lookup("server")))
 	mustBindFlag(configuration.BindPFlag(tokenKey, command.PersistentFlags().Lookup("token")))
@@ -100,12 +102,25 @@ func Load(command *cobra.Command) *Runtime {
 				return fmt.Errorf("read config file %q: %w", rootFlags.configFile, err)
 			}
 		}
+		if _, err := parseOutputFormat(rootFlags.output); err != nil {
+			return err
+		}
 		if err := runtime.loadStoredToken(); err != nil {
 			return err
 		}
 		return runtime.Initialize()
 	}
 	return runtime
+}
+
+// defaultOutput lets GROUND_CONTROL_OUTPUT set the default format while an
+// explicit --output flag still wins. An invalid value is rejected later in the
+// persistent pre-run.
+func defaultOutput() string {
+	if value := strings.TrimSpace(os.Getenv("GROUND_CONTROL_OUTPUT")); value != "" {
+		return value
+	}
+	return string(outputJSON)
 }
 
 func (r *Runtime) loadStoredToken() error {
