@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -140,12 +141,24 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
+// applyDownloadSpeed installs the current speed cap. A disabled cap leaves
+// replication at full speed. Bytes are still counted.
+func (f *FetchAndReplicateStateProcess) applyDownloadSpeed(log *zerolog.Logger) {
+	if f.cm == nil {
+		return
+	}
+	if err := budget.Apply(f.cm.GetNetworkConfig()); err != nil {
+		log.Warn().Err(err).Msg("download speed cap was not updated")
+	}
+}
+
 func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	f.start()
 	defer f.stop()
 
 	// Top level logger with process name
 	log := logger.FromContext(ctx).With().Str("process", f.name).Logger()
+	f.applyDownloadSpeed(&log)
 
 	// Check for early cancellation
 	select {
@@ -470,7 +483,7 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 	f.LogChanges(nil, missing, &groupLog)
 
 	if len(missing) > 0 {
-		if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
+		if err := replicator.Replicate(budget.WithMeter(f.copyContext(ctx)), sourceStore, missing); err != nil {
 			groupLog.Error().Err(err).Msg("Error replicating persisted state")
 			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
 			return result
@@ -613,6 +626,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		remoteConfig.AppConfig.HarborRegistryURL = f.cm.GetHarborRegistryURL()
 		localPeers := f.cm.GetPeerDistributionConfig()
 		config.ApplyRetainedPeerTransport(&remoteConfig, localPeers, useUnsecure)
+		config.RetainNetwork(&remoteConfig, f.cm.GetNetworkConfig())
 		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
 		if err != nil {
 			configFetcherLog.Error().Err(err).
@@ -721,7 +735,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
-	if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
+	if err := replicator.Replicate(budget.WithMeter(ctx), sourceStore, replicateEntity); err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
 		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
 		return result
