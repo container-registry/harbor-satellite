@@ -3,6 +3,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,7 +23,10 @@ func lockLayout(root string) (*os.File, error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("OCI store %s is in use by another satellite; set a distinct --registry-data-dir: %w", root, err)
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, fmt.Errorf("OCI store %s is in use by another satellite; set a distinct --registry-data-dir: %w", root, err)
+		}
+		return nil, fmt.Errorf("lock OCI store %s: %w", root, err)
 	}
 	return f, nil
 }

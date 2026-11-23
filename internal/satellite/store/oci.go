@@ -42,10 +42,12 @@ func NewOCIStore(root string) (*OCIStore, error) {
 		return nil, err
 	}
 	if err := clearStaleStages(root); err != nil {
+		closeLock(lock)
 		return nil, err
 	}
 	target, err := oci.New(root)
 	if err != nil {
+		closeLock(lock)
 		return nil, fmt.Errorf("open OCI store at %s: %w", root, err)
 	}
 	return &OCIStore{root: root, store: target, lock: lock}, nil
@@ -568,4 +570,11 @@ func (r *lockedReadSeekCloser) Close() error {
 	err := r.ReadSeekCloser.Close()
 	r.once.Do(r.unlock)
 	return err
+}
+
+// closeLock releases the layout lock after a failed open. A nil lock is a no-op.
+func closeLock(lock *os.File) {
+	if lock != nil {
+		_ = lock.Close()
+	}
 }
