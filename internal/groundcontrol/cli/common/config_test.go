@@ -129,6 +129,37 @@ func TestInvalidStoredSessionsAreRemoved(t *testing.T) {
 	}
 }
 
+func TestStoredSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	serverURL := "https://localhost:8080/"
+
+	missing := testRuntime(path, serverURL)
+	_, ok, err := missing.StoredSession()
+	require.NoError(t, err)
+	require.False(t, ok, "no session is stored yet")
+
+	expiry := time.Now().Add(time.Hour)
+	require.NoError(t, testRuntime(path, serverURL).StoreToken("admin", "session-token", expiry))
+
+	session, ok, err := testRuntime(path, serverURL).StoredSession()
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "admin", session.Username)
+	require.False(t, session.Expired)
+	require.WithinDuration(t, expiry, session.ExpiresAt, time.Second)
+}
+
+func TestStoredSessionReportsExpiry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	serverURL := "https://localhost:8080/"
+	require.NoError(t, testRuntime(path, serverURL).StoreToken("admin", "session-token", time.Now().Add(-time.Minute)))
+
+	session, ok, err := testRuntime(path, serverURL).StoredSession()
+	require.NoError(t, err)
+	require.True(t, ok, "StoredSession reports an expired session rather than discarding it")
+	require.True(t, session.Expired)
+}
+
 func testRuntime(credentialsPath string, serverURL string) *Runtime {
 	configuration := viper.New()
 	configuration.Set(credentialsFileKey, credentialsPath)
