@@ -2,7 +2,6 @@ package common
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -109,20 +108,21 @@ func PrintResponse(command *cobra.Command, response HTTPResponse) error {
 	if err := ResponseError(response); err != nil {
 		return err
 	}
+	format, err := resolveOutputFormat(command)
+	if err != nil {
+		return err
+	}
 
 	body := bytes.TrimSpace(response.GetBody())
 	if len(body) == 0 {
-		_, err := fmt.Fprintln(command.OutOrStdout(), response.Status())
+		_, err = fmt.Fprintln(command.OutOrStdout(), response.Status())
 		return err
 	}
-	var formatted bytes.Buffer
-	if json.Indent(&formatted, body, "", "  ") == nil {
-		body = formatted.Bytes()
-	}
-	if _, err := command.OutOrStdout().Write(body); err != nil {
+	rendered, err := render(format, body)
+	if err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(command.OutOrStdout())
+	_, err = command.OutOrStdout().Write(rendered)
 	return err
 }
 
