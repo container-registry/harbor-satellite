@@ -582,17 +582,17 @@ func (f *FetchAndReplicateStateProcess) commitArtifact(artifact Entity) {
 	f.images.Commit(artifact)
 }
 
-// replicateEach copies one image at a time. A copy that lands commits that
-// image. An image-specific failure leaves the rest of the list running.
-// A canceled context stops the list.
+// removalsOnly drops a deletion whose repository, name, and tag were just
+// copied. Deleting that entity untags the new image. The same name and tag
+// in another repository is still removed.
 func removalsOnly(deletions, copied []Entity) []Entity {
 	replaced := make(map[string]struct{}, len(copied))
 	for _, entity := range copied {
-		replaced[entity.Name+"|"+entity.Tag] = struct{}{}
+		replaced[replacementKey(entity)] = struct{}{}
 	}
 	kept := make([]Entity, 0, len(deletions))
 	for _, entity := range deletions {
-		if _, ok := replaced[entity.Name+"|"+entity.Tag]; ok {
+		if _, ok := replaced[replacementKey(entity)]; ok {
 			continue
 		}
 		kept = append(kept, entity)
@@ -600,6 +600,13 @@ func removalsOnly(deletions, copied []Entity) []Entity {
 	return kept
 }
 
+func replacementKey(entity Entity) string {
+	return entity.Repository + "|" + entity.Name + "|" + entity.Tag
+}
+
+// replicateEach copies one image at a time. A copy that lands commits that
+// image. An image-specific failure leaves the rest of the list running.
+// A canceled context stops the list.
 func (f *FetchAndReplicateStateProcess) replicateEach(ctx context.Context, _ string, local, source store.Store, artifacts []Entity) error {
 	var errs []error
 	for _, artifact := range artifacts {

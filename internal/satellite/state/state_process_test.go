@@ -306,6 +306,18 @@ func TestCanExecute(t *testing.T) {
 	}
 }
 
+func TestRemovalsOnlyKeepsAnotherRepository(t *testing.T) {
+	oldRepo := Entity{Repository: "repo-a", Name: "app", Tag: "latest", Digest: "sha256:old"}
+	newRepo := Entity{Repository: "repo-b", Name: "app", Tag: "latest", Digest: "sha256:new"}
+	replaced := Entity{Repository: "repo-a", Name: "app", Tag: "1", Digest: "sha256:old1"}
+	replacement := Entity{Repository: "repo-a", Name: "app", Tag: "1", Digest: "sha256:new1"}
+	removed := Entity{Repository: "library", Name: "nginx", Tag: "1.25", Digest: "sha256:gone"}
+
+	got := removalsOnly([]Entity{oldRepo, replaced, removed}, []Entity{newRepo, replacement})
+
+	require.Equal(t, []Entity{oldRepo, removed}, got)
+}
+
 func TestGetChanges(t *testing.T) {
 	process := &FetchAndReplicateStateProcess{name: "test"}
 	logger := zerolog.Nop()
