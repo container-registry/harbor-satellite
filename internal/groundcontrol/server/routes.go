@@ -38,8 +38,11 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 			handler = spiffe.RequireSPIFFEAuth(handler)
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		case "/satellites/sync", "/satellites/refresh":
-			handler = spiffe.AuthMiddleware(handler)
+			// SatelliteAuth reads the satellite name that SPIFFE extraction
+			// stores on the context, so extraction has to run first. The last
+			// wrap is the outer handler.
 			handler = s.SatelliteAuthMiddleware(handler)
+			handler = spiffe.AuthMiddleware(handler)
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		}
 

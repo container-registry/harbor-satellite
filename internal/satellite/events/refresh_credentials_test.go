@@ -110,8 +110,9 @@ func TestExecute_PostsRefreshToSatellitesRefresh(t *testing.T) {
 				gotPath = r.URL.Path
 				gotUser, gotPass, _ = r.BasicAuth()
 				w.Header().Set("Content-Type", "application/json")
-				_, err := w.Write([]byte(`{"secret":"new-secret"}`))
-				require.NoError(t, err)
+				if _, err := w.Write([]byte(`{"secret":"new-secret"}`)); err != nil {
+					t.Errorf("write refresh response: %v", err)
+				}
 			}))
 			t.Cleanup(srv.Close)
 
