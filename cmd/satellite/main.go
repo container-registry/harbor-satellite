@@ -20,6 +20,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -367,7 +368,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	proxyLifecycleCtx, cancelProxy := context.WithCancel(context.Background())
 	defer cancelProxy()
-	pullHandler, err := proxyimage.NewPull(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore)
+	imageGate := ready.New()
+	pullHandler, err := proxyimage.NewPull(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore, imageGate)
 	if err != nil {
 		return fmt.Errorf("initialize OCI proxy pull handler: %w", err)
 	}
@@ -496,6 +498,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	eventScheduler := events.NewEventScheduler(log)
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, pathConfig.DesiredStateFile, eventScheduler)
 	s.SetStores(localStore, remoteStore)
+	s.SetImageGate(imageGate)
 
 	err = s.Run(ctx)
 	if err != nil {
