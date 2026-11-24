@@ -216,7 +216,7 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 
 **Ground Control API Routes** (spec/groundcontrol/openapi.yaml, security wrapping in internal/groundcontrol/server/routes.go):
 - Public: `GET /ping`, `GET /health`, `POST /login` (rate limited), `POST /satellites/ztr` (rate limited), `GET /satellites/spiffe-ztr` (SPIFFE required, rate limited)
-- Satellite-authenticated: `POST /satellites/sync` (SPIFFE SVID or robot Basic auth, rate limited)
+- Satellite-authenticated: `POST /satellites/sync` and `POST /satellites/refresh` (SPIFFE SVID or robot Basic auth, rate limited)
 - Protected (under `/api`): groups, configs, satellites, users, logout
 - System admin only: user create/delete and admin password reset, group delete, `/api/spire/*`, `POST /api/satellites/register` (SPIFFE registration)
 - Background cleanup job: every 24h under a PostgreSQL advisory lock, deletes status records older than 7 days and orphaned artifacts

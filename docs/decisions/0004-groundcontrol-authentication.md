@@ -51,7 +51,7 @@ Token-based ZTR sends the single-use token in the JSON request body as
 `{"token":"<32-character token>"}`; the token is not part of the URL.
 
 Satellite-authenticated (robot account basic auth or SPIFFE mTLS, added in #500):
-* `POST /satellites/sync`, `GET /satellites/spiffe-ztr` (SPIFFE only)
+* `POST /satellites/sync`, `POST /satellites/refresh`, `GET /satellites/spiffe-ztr` (SPIFFE only)
 
 Protected (all authenticated users):
 * `POST /api/logout`, `GET /api/users`, `GET /api/users/{username}`, `PATCH /api/users/password`

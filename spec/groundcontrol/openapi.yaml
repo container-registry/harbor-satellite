@@ -1303,6 +1303,37 @@ paths:
             text/plain:
               schema:
                 type: string
+  /satellites/refresh:
+    post:
+      tags:
+        - satellites
+      summary: Refreshes the satellite robot secret.
+      operationId: refreshSatellite
+      responses:
+        "200":
+          description: Robot secret refreshed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshCredentialsResponse"
+        "403":
+          description: Satellite identity is unknown or has no robot account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many refresh attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Robot secret could not be refreshed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
   /satellites/spiffe-ztr:
     get:
       tags:
@@ -2189,6 +2220,16 @@ components:
         username:
           type: string
           x-go-name: Username
+    RefreshCredentialsResponse:
+      type: object
+      title: RefreshCredentialsResponse contains the new Harbor robot secret.
+      required:
+        - secret
+      properties:
+        secret:
+          type: string
+          format: password
+          x-go-name: Secret
     LoginResponse:
       type: object
       title: LoginResponse contains a bearer token and its expiration timestamp.

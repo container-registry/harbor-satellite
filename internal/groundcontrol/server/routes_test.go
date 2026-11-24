@@ -28,6 +28,16 @@ func TestGeneratedRoutes(t *testing.T) {
 		require.NotEmpty(t, response.Header().Get("X-Request-ID"))
 	})
 
+	t.Run("satellite refresh requires credentials", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/satellites/refresh", nil)
+
+		handler.ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusUnauthorized, response.Code)
+		require.NotContains(t, response.Body.String(), "route not found")
+	})
+
 	t.Run("protected endpoint", func(t *testing.T) {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/api/configs", nil)

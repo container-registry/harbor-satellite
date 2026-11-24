@@ -1,8 +1,16 @@
 package events
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestRefreshProcess() *RefreshCredentialProcess {
@@ -77,4 +85,70 @@ func TestRefreshCredentialProcess_StartStop_Concurrent(t *testing.T) {
 	if p.IsRunning() {
 		t.Error("expected IsRunning to be false after final stop()")
 	}
+}
+
+func TestExecute_PostsRefreshToSatellitesRefresh(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL func(serverURL string) string
+	}{
+		{
+			name:    "url without trailing slash",
+			baseURL: func(serverURL string) string { return serverURL },
+		},
+		{
+			name:    "url with trailing slash",
+			baseURL: func(serverURL string) string { return serverURL + "/" },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMethod, gotPath, gotUser, gotPass string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				gotUser, gotPass, _ = r.BasicAuth()
+				w.Header().Set("Content-Type", "application/json")
+				if _, err := w.Write([]byte(`{"secret":"new-secret"}`)); err != nil {
+					t.Errorf("write refresh response: %v", err)
+				}
+			}))
+			t.Cleanup(srv.Close)
+
+			cfgPath := filepath.Join(t.TempDir(), "config.json")
+			cm, err := config.NewConfigManager(cfgPath, "", "", tt.baseURL(srv.URL), false, &config.Config{})
+			require.NoError(t, err)
+			cm.With(
+				config.SetUseUnsecure(true),
+				config.SetStateAuth("robot$sat", "old-secret", config.URL("http://registry.example")),
+			)
+
+			log := zerolog.Nop()
+			proc := &RefreshCredentialProcess{
+				name: "refresh_credentials",
+				cm:   cm,
+				log:  &log,
+			}
+
+			require.NoError(t, proc.Execute(context.Background()))
+			require.Equal(t, http.MethodPost, gotMethod)
+			require.Equal(t, "/satellites/refresh", gotPath)
+			require.Equal(t, "robot$sat", gotUser)
+			require.Equal(t, "old-secret", gotPass)
+			require.Equal(t, "new-secret", cm.GetSourceRegistryPassword())
+		})
+	}
+}
+
+func TestCreateRequest_RejectsPlainHTTPWhenSecure(t *testing.T) {
+	cm, err := config.NewConfigManager(filepath.Join(t.TempDir(), "config.json"), "", "", "http://ground-control", false, &config.Config{})
+	require.NoError(t, err)
+	cm.With(config.SetStateAuth("robot$sat", "secret", config.URL("http://registry.example")))
+
+	log := zerolog.Nop()
+	proc := &RefreshCredentialProcess{cm: cm, log: &log}
+	_, err = proc.createRequest(context.Background(), "http://ground-control/satellites/refresh")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must use HTTPS")
 }

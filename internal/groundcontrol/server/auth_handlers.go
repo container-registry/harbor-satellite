@@ -16,10 +16,6 @@ import (
 
 const maxFailedAttempts = 5
 
-type refreshCredentialResponse struct {
-	Secret string `json:"secret"`
-}
-
 func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -142,7 +138,7 @@ func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) RefreshSatellite(w http.ResponseWriter, r *http.Request) {
-	// Check SPIFFE identity first for dual auth
+	// SatelliteAuthMiddleware stores the name for both SPIFFE and robot Basic auth.
 	var satelliteName string
 	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
 		satelliteName = name
@@ -184,7 +180,7 @@ func (s *Server) RefreshSatellite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, refreshCredentialResponse{
+	WriteJSONResponse(w, http.StatusOK, RefreshCredentialsResponse{
 		Secret: newSecret,
 	})
 }
