@@ -49,6 +49,33 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate that every referenced Harbor project exists before touching
+	// the database. Without this the group is stored with projects that do
+	// not exist in Harbor, and the failure only surfaces later when a
+	// satellite is registered against the group and the robot update is
+	// rejected with a misleading "failed to update robot account
+	// permissions" error. Doing it before BeginTx keeps the DB connection
+	// out of the remote Harbor round-trip.
+	projects := getProjectNames(req.Artifacts)
+	for _, project := range projects {
+		exists, err := s.groupSync.ProjectExists(r.Context(), project)
+		if err != nil {
+			log.Printf("Error checking Harbor project %q: %v", project, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: failed to verify project %q in Harbor registry: %v", project, err),
+				Code:    http.StatusBadGateway,
+			})
+			return
+		}
+		if !exists {
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: project %q not found in Harbor registry", project),
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+	}
+
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Println("Could not begin transaction:", err)
@@ -72,7 +99,6 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries.WithTx(tx)
 
-	projects := getProjectNames(req.Artifacts)
 	params := database.CreateGroupParams{
 		GroupName:   req.Group,
 		RegistryUrl: env.GC.Harbor.URL,

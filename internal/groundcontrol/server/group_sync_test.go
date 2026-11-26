@@ -73,6 +73,64 @@ func TestSyncGroupLeavesRobotsAloneWhenStatePushFails(t *testing.T) {
 	require.Empty(t, projects)
 }
 
+func TestSyncGroupRejectsMissingHarborProject(t *testing.T) {
+	// If a referenced Harbor project does not exist, SyncGroup should fail
+	// fast with 400 Bad Request. No DB work and no state push happen, so
+	// the sqlmock has no expectations to meet.
+	server, mock := newMockServer(t)
+	fake := &fakeGroupSync{projectExists: func(_ context.Context, name string) (bool, error) {
+		return name == "store-a", nil
+	}}
+	server.groupSync = fake
+
+	body, err := json.Marshal(GroupSyncRequest{
+		Group: "edge-a",
+		Artifacts: []GroupArtifact{
+			{Repository: "store-a/app", Tag: []string{"latest"}},
+			{Repository: "store-missing/app", Tag: []string{"latest"}},
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/groups/sync", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	server.SyncGroup(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Contains(t, rr.Body.String(), "store-missing")
+	require.Empty(t, fake.steps)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSyncGroupReportsHarborLookupFailureAsBadGateway(t *testing.T) {
+	// If the Harbor project lookup itself errors, SyncGroup should respond
+	// with 502 Bad Gateway and the underlying error should surface in the
+	// message.
+	server, mock := newMockServer(t)
+	fake := &fakeGroupSync{projectExists: func(context.Context, string) (bool, error) {
+		return false, errors.New("harbor unreachable")
+	}}
+	server.groupSync = fake
+
+	body, err := json.Marshal(GroupSyncRequest{
+		Group: "edge-a",
+		Artifacts: []GroupArtifact{
+			{Repository: "store-a/app", Tag: []string{"latest"}},
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/groups/sync", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	server.SyncGroup(rr, req)
+
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+	require.Contains(t, rr.Body.String(), "store-a")
+	require.Contains(t, rr.Body.String(), "harbor unreachable")
+	require.Empty(t, fake.steps)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func runSyncGroup(t *testing.T, wantStatus int, artifacts []GroupArtifact, groups []syncGroupRow, failState bool) ([]string, []string) {
 	t.Helper()
 
@@ -126,12 +184,16 @@ func groupRows(now time.Time, group syncGroupRow) *sqlmock.Rows {
 
 // fakeGroupSync records the Harbor calls SyncGroup makes.
 type fakeGroupSync struct {
-	failState bool
-	steps     []string
-	projects  []string
+	failState     bool
+	projectExists func(ctx context.Context, name string) (bool, error)
+	steps         []string
+	projects      []string
 }
 
-func (*fakeGroupSync) ProjectExists(context.Context, string) (bool, error) {
+func (f *fakeGroupSync) ProjectExists(ctx context.Context, name string) (bool, error) {
+	if f.projectExists != nil {
+		return f.projectExists(ctx, name)
+	}
 	return true, nil
 }
 
