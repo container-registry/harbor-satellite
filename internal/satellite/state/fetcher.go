@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -170,7 +171,7 @@ func (t *httpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (f *URLStateFetcher) buildTLSTransport() (http.RoundTripper, error) {
-	if f.tlsCfg.CertFile == "" && f.tlsCfg.CAFile == "" {
+	if f.tlsCfg.CertFile == "" && f.tlsCfg.CAFile == "" && !f.tlsCfg.SkipVerify {
 		return nil, nil
 	}
 
@@ -187,9 +188,13 @@ func (f *URLStateFetcher) buildTLSTransport() (http.RoundTripper, error) {
 		return nil, fmt.Errorf("load TLS config: %w", err)
 	}
 
-	return &http.Transport{
-		TLSClientConfig: tlsConfig,
-	}, nil
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, errors.New("default HTTP transport is not an *http.Transport")
+	}
+	transport := defaultTransport.Clone()
+	transport.TLSClientConfig = tlsConfig
+	return transport, nil
 }
 
 func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any, log *zerolog.Logger) error {
