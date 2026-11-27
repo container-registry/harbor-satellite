@@ -32,6 +32,10 @@ helm install ground-control examples/deploy/helm/groundcontrol \
   --set database.password=<db-password>
 ```
 
+## systemd
+
+[`systemd/`](systemd/) runs the satellite as a native service on an edge host, with unit files, an install script and drop-ins for SPIRE and container runtime mirroring.
+
 ## Where Replicated Images Go
 
 By default the satellite writes replicated images into an OCI image layout at `<config-dir>/oci` (override with `--registry-data-dir` or `REGISTRY_DATA_DIR`). The satellite does not serve this layout over HTTP, so there is no registry endpoint to `docker pull` from and it cannot act as a CRI mirror.
