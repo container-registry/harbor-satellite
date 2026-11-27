@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -260,11 +261,17 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries
 
-	// Get full token info including expiry
-	tokenInfo, err := q.GetTokenByValue(r.Context(), token)
+	// Atomically claim the token in one step. This closes the reuse
+	// window: if two requests race on the same token, only one of them
+	// will see a row updated; the other gets sql.ErrNoRows and is
+	// rejected below. Previously the token was looked up here but only
+	// deleted at the very end of this handler, so concurrent or replayed
+	// requests with the same token could both pass validation and both
+	// trigger a robot secret rotation.
+	tokenInfo, err := q.ClaimToken(r.Context(), token)
 	if err != nil {
 		masked := maskToken(token)
-		log.Printf("Invalid Satellite Token %s: %v", masked, err)
+		log.Printf("Invalid or already-used Satellite Token %s: %v", masked, err)
 		s.auditEvent(r, auditlog.AuditEvent{
 			Operation:    auditlog.OpAuth,
 			ResourceType: auditlog.ResSatellite,
@@ -279,6 +286,21 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// From this point on the token is claimed but not yet permanently
+	// consumed. If any step below fails, roll the claim back so the
+	// satellite's scheduled retry can use the same token again instead
+	// of receiving a permanent "Invalid Token" for a transient failure.
+	// Use a background context here so the rollback still runs even if
+	// the request context has been cancelled.
+	consumed := false
+	defer func() {
+		if !consumed {
+			if uerr := q.UnclaimToken(context.Background(), token); uerr != nil {
+				log.Printf("failed to unclaim token %s after registration failure: %v", maskToken(token), uerr)
+			}
+		}
+	}()
 
 	// Validate token expiry
 	if time.Now().After(tokenInfo.ExpiresAt) {
@@ -379,17 +401,18 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	err = q.DeleteToken(r.Context(), token)
-	if err != nil {
-		log.Println("error deleting token")
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Error deleting token",
+	// Registration succeeded — permanently consume the token now so it
+	// can never be reused, and prevent the deferred rollback above from
+	// firing.
+	if err := q.ConsumeToken(r.Context(), token); err != nil {
+		log.Printf("failed to consume token %s after successful registration: %v", maskToken(token), err)
+		HandleAppError(w, &AppError{
+			Message: "Error: failed to finalize registration",
 			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		})
 		return
 	}
+	consumed = true
 
 	s.auditEvent(r, auditlog.AuditEvent{
 		Operation:    auditlog.OpRegister,
