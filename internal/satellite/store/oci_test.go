@@ -144,6 +144,36 @@ func TestOCIStoreDeleteRetainsSharedContentAndMissingDeleteIsIdempotent(t *testi
 	require.ErrorIs(t, err, errdef.ErrNotFound)
 }
 
+func TestOCIStoreDeleteByDigestKeepsTheReplacementTag(t *testing.T) {
+	remote, manifestPayload, manifestDesc, _, _ := testArtifact(t)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	latest := Artifact{Name: "team/app", Tag: "latest"}
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{latest}))
+
+	var replacement ocispec.Manifest
+	require.NoError(t, json.Unmarshal(manifestPayload, &replacement))
+	replacement.Annotations = map[string]string{"org.opencontainers.image.version": "replacement"}
+	replacementPayload, err := json.Marshal(replacement)
+	require.NoError(t, err)
+	replacementDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, replacementPayload)
+	repository, err := remote.repository(latest)
+	require.NoError(t, err)
+	require.NoError(t, repository.PushReference(context.Background(), replacementDesc, bytes.NewReader(replacementPayload), "latest"))
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{latest}))
+
+	require.NoError(t, local.Delete(context.Background(), []Artifact{{
+		Name:   "team/app",
+		Digest: manifestDesc.Digest.String(),
+	}}))
+
+	kept, err := local.Pull(context.Background(), latest, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, replacementDesc.Digest, kept.Digest)
+	_, err = local.Pull(context.Background(), Artifact{Name: "team/app", Digest: manifestDesc.Digest.String()}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
 func TestNewOCIStoreRemovesStaleStages(t *testing.T) {
 	root := t.TempDir()
 	stale := filepath.Join(root, ".stage", "copy-dead")

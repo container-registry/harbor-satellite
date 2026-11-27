@@ -127,7 +127,7 @@ func (q *Queries) GetLatestArtifacts(ctx context.Context, satelliteID int32) ([]
 }
 
 const getLatestSatelliteStatus = `-- name: GetLatestSatelliteStatus :one
-SELECT id, satellite_id, activity, latest_state_digest, latest_config_digest, cpu_percent, memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at, created_at, artifact_ids FROM satellite_status
+SELECT id, satellite_id, activity, latest_state_digest, latest_config_digest, cpu_percent, memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at, created_at, artifact_ids, download_bytes_per_second, bytes_in_window, bytes_total FROM satellite_status
 WHERE satellite_id = $1 ORDER BY created_at DESC LIMIT 1
 `
 
@@ -148,12 +148,15 @@ func (q *Queries) GetLatestSatelliteStatus(ctx context.Context, satelliteID int3
 		&i.ReportedAt,
 		&i.CreatedAt,
 		pq.Array(&i.ArtifactIds),
+		&i.DownloadBytesPerSecond,
+		&i.BytesInWindow,
+		&i.BytesTotal,
 	)
 	return i, err
 }
 
 const getSatelliteStatusHistory = `-- name: GetSatelliteStatusHistory :many
-SELECT id, satellite_id, activity, latest_state_digest, latest_config_digest, cpu_percent, memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at, created_at, artifact_ids FROM satellite_status
+SELECT id, satellite_id, activity, latest_state_digest, latest_config_digest, cpu_percent, memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at, created_at, artifact_ids, download_bytes_per_second, bytes_in_window, bytes_total FROM satellite_status
 WHERE satellite_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -187,6 +190,9 @@ func (q *Queries) GetSatelliteStatusHistory(ctx context.Context, arg GetSatellit
 			&i.ReportedAt,
 			&i.CreatedAt,
 			pq.Array(&i.ArtifactIds),
+			&i.DownloadBytesPerSecond,
+			&i.BytesInWindow,
+			&i.BytesTotal,
 		); err != nil {
 			return nil, err
 		}
@@ -261,24 +267,28 @@ const insertSatelliteStatus = `-- name: InsertSatelliteStatus :one
 INSERT INTO satellite_status (
     satellite_id, activity, latest_state_digest, latest_config_digest,
     cpu_percent, memory_used_bytes, storage_used_bytes,
-    last_sync_duration_ms, image_count, reported_at, artifact_ids
+    last_sync_duration_ms, image_count, reported_at, artifact_ids,
+    download_bytes_per_second, bytes_in_window, bytes_total
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, satellite_id, activity, latest_state_digest, latest_config_digest, cpu_percent, memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at, created_at, artifact_ids
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+RETURNING id, satellite_id, activity, latest_state_digest, latest_config_digest, cpu_percent, memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at, created_at, artifact_ids, download_bytes_per_second, bytes_in_window, bytes_total
 `
 
 type InsertSatelliteStatusParams struct {
-	SatelliteID        int32
-	Activity           string
-	LatestStateDigest  sql.NullString
-	LatestConfigDigest sql.NullString
-	CpuPercent         sql.NullString
-	MemoryUsedBytes    sql.NullInt64
-	StorageUsedBytes   sql.NullInt64
-	LastSyncDurationMs sql.NullInt64
-	ImageCount         sql.NullInt32
-	ReportedAt         time.Time
-	ArtifactIds        []int32
+	SatelliteID            int32
+	Activity               string
+	LatestStateDigest      sql.NullString
+	LatestConfigDigest     sql.NullString
+	CpuPercent             sql.NullString
+	MemoryUsedBytes        sql.NullInt64
+	StorageUsedBytes       sql.NullInt64
+	LastSyncDurationMs     sql.NullInt64
+	ImageCount             sql.NullInt32
+	ReportedAt             time.Time
+	ArtifactIds            []int32
+	DownloadBytesPerSecond sql.NullFloat64
+	BytesInWindow          sql.NullInt64
+	BytesTotal             sql.NullInt64
 }
 
 func (q *Queries) InsertSatelliteStatus(ctx context.Context, arg InsertSatelliteStatusParams) (SatelliteStatus, error) {
@@ -294,6 +304,9 @@ func (q *Queries) InsertSatelliteStatus(ctx context.Context, arg InsertSatellite
 		arg.ImageCount,
 		arg.ReportedAt,
 		pq.Array(arg.ArtifactIds),
+		arg.DownloadBytesPerSecond,
+		arg.BytesInWindow,
+		arg.BytesTotal,
 	)
 	var i SatelliteStatus
 	err := row.Scan(
@@ -310,6 +323,9 @@ func (q *Queries) InsertSatelliteStatus(ctx context.Context, arg InsertSatellite
 		&i.ReportedAt,
 		&i.CreatedAt,
 		pq.Array(&i.ArtifactIds),
+		&i.DownloadBytesPerSecond,
+		&i.BytesInWindow,
+		&i.BytesTotal,
 	)
 	return i, err
 }
